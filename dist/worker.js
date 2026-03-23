@@ -26,18 +26,22 @@ var init_default_redirect_rule_terms = __esm({
       "115.com",
       "115cdn.com",
       "115cdn.net",
+      "116cdn.cn",
+      "116cdn.com",
+      "116cdn.net",
+      "anxia.com",
+      "sq.cc",
       "uc.cn",
       "aliyundrive.com",
       "aliyundrive.net",
       "voicehub.top",
       "xiaoya.pro",
-      "anxia.com",
       "jianguoyun",
       "aliyundrive",
       "alipan",
       "alicloudccp",
-      "myqcloud",
       "aliyuncs",
+      "myqcloud",
       "baidu",
       "baidupcs",
       "123pan",
@@ -159,6 +163,153 @@ var init_defaults = __esm({
   }
 });
 
+// src/proxy/diagnostics/runtime-cache-cleanup.js
+function createRuntimeCacheCleanupState() {
+  return {
+    phase: 0,
+    iterators: {
+      rate: null,
+      redirect: null,
+      redirectInflight: null,
+      metadataPrewarm: null
+    }
+  };
+}
+function normalizePositiveInteger(value, fallback) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) return fallback;
+  return Math.max(1, Math.floor(num));
+}
+function cleanupMapChunk(map, shouldDelete, iteratorState, iteratorKey, startedAt, now, options) {
+  if (!(map instanceof Map)) return;
+  const chunkSize = normalizePositiveInteger(options?.chunkSize, DEFAULT_RUNTIME_CACHE_CLEANUP_CHUNK_SIZE);
+  const budgetMs = normalizePositiveInteger(options?.budgetMs, DEFAULT_RUNTIME_CACHE_CLEANUP_BUDGET_MS);
+  let iterator = iteratorState[iteratorKey];
+  if (!iterator) {
+    iterator = map.entries();
+    iteratorState[iteratorKey] = iterator;
+  }
+  let scanned = 0;
+  while (scanned < chunkSize && Date.now() - startedAt < budgetMs) {
+    const next = iterator.next();
+    if (next.done) {
+      iteratorState[iteratorKey] = null;
+      break;
+    }
+    scanned += 1;
+    const [key, value] = next.value;
+    if (!map.has(key)) continue;
+    if (shouldDelete(value, now)) map.delete(key);
+  }
+}
+function trimMapToMaxEntries(map, iteratorState, iteratorKey, startedAt, options, fallbackMaxEntries) {
+  if (!(map instanceof Map)) return;
+  const budgetMs = normalizePositiveInteger(options?.budgetMs, DEFAULT_RUNTIME_CACHE_CLEANUP_BUDGET_MS);
+  const maxEntries = normalizePositiveInteger(options?.maxEntries, fallbackMaxEntries);
+  if (map.size <= maxEntries) return;
+  while (map.size > maxEntries && Date.now() - startedAt < budgetMs) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey == null) break;
+    map.delete(oldestKey);
+    iteratorState[iteratorKey] = null;
+  }
+}
+function maybeCleanupRuntimeCaches(globals, options = {}) {
+  if (!globals || typeof globals !== "object") return;
+  const state = globals.RuntimeCacheCleanupState || createRuntimeCacheCleanupState();
+  globals.RuntimeCacheCleanupState = state;
+  const now = Number.isFinite(Number(options?.now)) ? Number(options.now) : Date.now();
+  const startedAt = Date.now();
+  if (state.phase === 0) {
+    cleanupMapChunk(
+      globals.RateLimitCache,
+      (entry) => !entry || Number(entry.resetAt || 0) <= now,
+      state.iterators,
+      "rate",
+      startedAt,
+      now,
+      options
+    );
+    trimMapToMaxEntries(
+      globals.RateLimitCache,
+      state.iterators,
+      "rate",
+      startedAt,
+      {
+        ...options,
+        maxEntries: options?.rateLimitMaxEntries
+      },
+      DEFAULT_RATE_LIMIT_CACHE_MAX_ENTRIES
+    );
+    state.phase = 1;
+    return;
+  }
+  if (state.phase === 1) {
+    cleanupMapChunk(
+      globals.ExternalRedirectCache,
+      (entry) => !entry || Number(entry.exp || 0) <= now,
+      state.iterators,
+      "redirect",
+      startedAt,
+      now,
+      options
+    );
+    trimMapToMaxEntries(
+      globals.ExternalRedirectCache,
+      state.iterators,
+      "redirect",
+      startedAt,
+      {
+        ...options,
+        maxEntries: options?.redirectMaxEntries
+      },
+      DEFAULT_EXTERNAL_REDIRECT_CACHE_MAX_ENTRIES
+    );
+    state.phase = 2;
+    return;
+  }
+  if (state.phase === 2) {
+    cleanupMapChunk(
+      globals.ExternalRedirectInflight,
+      (entry) => {
+        const ttlMs = normalizePositiveInteger(options?.externalRedirectInflightTtlMs, DEFAULT_EXTERNAL_REDIRECT_INFLIGHT_TTL_MS);
+        return !entry || Number(entry.startedAt || 0) <= 0 || Number(entry.startedAt || 0) + ttlMs <= now;
+      },
+      state.iterators,
+      "redirectInflight",
+      startedAt,
+      now,
+      options
+    );
+    state.phase = 3;
+    return;
+  }
+  cleanupMapChunk(
+    globals.MetadataPrewarmInflight,
+    (entry) => {
+      const ttlMs = normalizePositiveInteger(options?.metadataPrewarmInflightTtlMs, DEFAULT_METADATA_PREWARM_INFLIGHT_TTL_MS);
+      return Number(entry || 0) <= 0 || Number(entry || 0) + ttlMs <= now;
+    },
+    state.iterators,
+    "metadataPrewarm",
+    startedAt,
+    now,
+    options
+  );
+  state.phase = 0;
+}
+var DEFAULT_RUNTIME_CACHE_CLEANUP_BUDGET_MS, DEFAULT_RUNTIME_CACHE_CLEANUP_CHUNK_SIZE, DEFAULT_RATE_LIMIT_CACHE_MAX_ENTRIES, DEFAULT_EXTERNAL_REDIRECT_CACHE_MAX_ENTRIES, DEFAULT_EXTERNAL_REDIRECT_INFLIGHT_TTL_MS, DEFAULT_METADATA_PREWARM_INFLIGHT_TTL_MS;
+var init_runtime_cache_cleanup = __esm({
+  "src/proxy/diagnostics/runtime-cache-cleanup.js"() {
+    DEFAULT_RUNTIME_CACHE_CLEANUP_BUDGET_MS = 1;
+    DEFAULT_RUNTIME_CACHE_CLEANUP_CHUNK_SIZE = 64;
+    DEFAULT_RATE_LIMIT_CACHE_MAX_ENTRIES = 2048;
+    DEFAULT_EXTERNAL_REDIRECT_CACHE_MAX_ENTRIES = 2048;
+    DEFAULT_EXTERNAL_REDIRECT_INFLIGHT_TTL_MS = 60 * 1e3;
+    DEFAULT_METADATA_PREWARM_INFLIGHT_TTL_MS = 60 * 1e3;
+  }
+});
+
 // src/proxy/diagnostics/runtime-state.js
 function createPlaybackOptimizationStats() {
   return {
@@ -198,11 +349,27 @@ function createRuntimeGlobals() {
     PlaybackTelemetryHosts: /* @__PURE__ */ new Map(),
     ExternalRedirectCache: /* @__PURE__ */ new Map(),
     ExternalRedirectInflight: /* @__PURE__ */ new Map(),
+    PlaybackHeadWindowCache: /* @__PURE__ */ new Map(),
+    PlaybackJumpWindowCache: /* @__PURE__ */ new Map(),
+    PlaybackSessionHints: /* @__PURE__ */ new Map(),
+    PlaybackWindowBytesTotal: 0,
+    MetadataPrewarmInflight: /* @__PURE__ */ new Map(),
     RateLimitCache: /* @__PURE__ */ new Map(),
+    RuntimeCacheCleanupState: createRuntimeCacheCleanupState(),
     PlaybackOptimizationStats: createPlaybackOptimizationStats(),
     resetPlaybackOptimizationStats() {
       this.PlaybackOptimizationStats = clonePlaybackOptimizationStats();
       return this.PlaybackOptimizationStats;
+    },
+    resetRuntimeCacheCleanupState() {
+      this.RuntimeCacheCleanupState = createRuntimeCacheCleanupState();
+      return this.RuntimeCacheCleanupState;
+    },
+    resetPlaybackWindowState() {
+      this.PlaybackHeadWindowCache.clear();
+      this.PlaybackJumpWindowCache.clear();
+      this.PlaybackSessionHints.clear();
+      this.PlaybackWindowBytesTotal = 0;
     },
     CryptoKeyCache: /* @__PURE__ */ new Map(),
     Regex: {
@@ -213,6 +380,7 @@ function createRuntimeGlobals() {
 var GLOBALS;
 var init_runtime_state = __esm({
   "src/proxy/diagnostics/runtime-state.js"() {
+    init_runtime_cache_cleanup();
     GLOBALS = createRuntimeGlobals();
   }
 });
@@ -698,7 +866,7 @@ var init_constants = __esm({
     PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES = 1024 * 1024 * 64;
     PLAYBACK_OPTIMIZATION_MAX_BOUNDED_RANGE_BYTES = 1024 * 1024 * 4;
     RETRYABLE_ORIGIN_STATUSES = /* @__PURE__ */ new Set([500, 502, 503, 504, 522, 523, 524, 525, 526, 530]);
-    LOGIN_COMPAT_AUTH = 'Emby Client="Emby Mate", Device="Browser", DeviceId="proxy-login-patch", Version="2.4.8"';
+    LOGIN_COMPAT_AUTH = 'Emby Client="Emby Mate", Device="Browser", DeviceId="proxy-login-patch", Version="2.4.9"';
   }
 });
 
@@ -915,6 +1083,11 @@ function translateUpstreamUrlToProxyLocation(upstreamUrl, activeTargetBase, prox
 function normalizePrewarmDepth(value) {
   return String(value || "").trim().toLowerCase() === "poster" ? "poster" : "poster_manifest";
 }
+function shouldAllowMetadataPrewarmPath(pathname = "") {
+  const lowerPath = String(pathname || "").toLowerCase();
+  if (!lowerPath) return false;
+  return lowerPath.includes("/items/") || lowerPath.includes("/playbackinfo");
+}
 function isHeavyVideoBytePath(pathname = "") {
   const lowerPath = String(pathname || "").toLowerCase();
   if (!lowerPath) return false;
@@ -1068,9 +1241,12 @@ async function maybePrewarmMetadataResponse({
   if (requestState?.isMetadataPrewarm === true) return;
   if (request?.method !== "GET" || requestState?.enablePrewarm !== true) return;
   if (requestState?.isImage === true || requestState?.isStaticFile === true || requestState?.isSubtitle === true || requestState?.isManifest === true || requestState?.isSegment === true || requestState?.isBigStream === true) return;
+  if (!shouldAllowMetadataPrewarmPath(requestState?.activeNormalizedPath || "")) return;
   if (!(Number(response?.status) >= 200 && Number(response?.status) < 300)) return;
   const contentType = String(response?.headers?.get?.("Content-Type") || "").toLowerCase();
   if (!contentType.includes("json")) return;
+  const contentLength = Number(response?.headers?.get?.("Content-Length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > MAX_METADATA_PREWARM_JSON_BYTES) return;
   let payload = null;
   try {
     payload = await response.clone().json();
@@ -1088,11 +1264,15 @@ async function maybePrewarmMetadataResponse({
   if (!targets.length) return;
   const prewarmTimeoutMs = Math.max(250, Math.min(1e4, Math.round(Number(context?.prewarmTimeoutMs) || DEFAULT_METADATA_PREWARM_TIMEOUT_MS)));
   executionContext.waitUntil((async () => {
-    for (const target of targets) {
-      if (!shouldWorkerCacheMetadataUrl(target.upstreamUrl)) continue;
+    let nextIndex = 0;
+    const runTarget = async (target) => {
+      if (!shouldWorkerCacheMetadataUrl(target.upstreamUrl)) return;
       const cacheProbeUrl = new URL(target.proxyLocation, request.url);
       const existing = await matchWorkerMetadataCache(cacheProbeUrl);
-      if (existing) continue;
+      if (existing) return;
+      const inflightKey = cacheProbeUrl.toString();
+      if (GLOBALS.MetadataPrewarmInflight.has(inflightKey)) return;
+      GLOBALS.MetadataPrewarmInflight.set(inflightKey, Date.now());
       const warmRequestState = createMetadataWarmRequestState(target, request, requestState, context);
       const headers = buildUpstreamHeaders(
         request,
@@ -1130,17 +1310,30 @@ async function maybePrewarmMetadataResponse({
         }
       } catch (_) {
       } finally {
+        GLOBALS.MetadataPrewarmInflight.delete(inflightKey);
         if (timer !== null) clearTimeout(timer);
       }
-    }
+    };
+    const workers = Array.from({
+      length: Math.min(MAX_METADATA_PREWARM_CONCURRENCY, targets.length)
+    }, async () => {
+      while (nextIndex < targets.length) {
+        const current = targets[nextIndex];
+        nextIndex += 1;
+        if (!current) break;
+        await runTarget(current);
+      }
+    });
+    await Promise.all(workers);
   })());
 }
-var IMAGE_EXT_RE2, EMBY_IMAGE_RE2, MANIFEST_EXT_RE2, SUBTITLE_EXT_RE2, HEAVY_VIDEO_EXT_RE, HEAVY_VIDEO_ROUTE_RE, DEFAULT_METADATA_PREWARM_TIMEOUT_MS, DIRECT_MEDIA_SOURCE_METADATA_FIELDS, NESTED_MEDIA_SOURCE_METADATA_ARRAY_FIELDS, NESTED_MEDIA_SOURCE_METADATA_ITEM_FIELDS;
+var IMAGE_EXT_RE2, EMBY_IMAGE_RE2, MANIFEST_EXT_RE2, SUBTITLE_EXT_RE2, HEAVY_VIDEO_EXT_RE, HEAVY_VIDEO_ROUTE_RE, DEFAULT_METADATA_PREWARM_TIMEOUT_MS, MAX_METADATA_PREWARM_JSON_BYTES, MAX_METADATA_PREWARM_CONCURRENCY, DIRECT_MEDIA_SOURCE_METADATA_FIELDS, NESTED_MEDIA_SOURCE_METADATA_ARRAY_FIELDS, NESTED_MEDIA_SOURCE_METADATA_ITEM_FIELDS;
 var init_metadata_prewarm = __esm({
   "src/proxy/media/metadata-prewarm.js"() {
     init_static_cache();
     init_metadata_cache();
     init_upstream_headers();
+    init_runtime_state();
     IMAGE_EXT_RE2 = /\.(?:jpe?g|gif|png|svg|ico|webp)$/i;
     EMBY_IMAGE_RE2 = /\/(?:images|icons|branding|covers)\//i;
     MANIFEST_EXT_RE2 = /\.(?:m3u8|mpd)$/i;
@@ -1148,6 +1341,8 @@ var init_metadata_prewarm = __esm({
     HEAVY_VIDEO_EXT_RE = /\.(?:mp4|m4v|mkv|mov|avi|wmv|flv|ts|m4s)(?:$|[?#])/i;
     HEAVY_VIDEO_ROUTE_RE = /\/(?:videos|items)\/[^/]+\/(?:stream|original|download|file)\b/i;
     DEFAULT_METADATA_PREWARM_TIMEOUT_MS = 3e3;
+    MAX_METADATA_PREWARM_JSON_BYTES = 512 * 1024;
+    MAX_METADATA_PREWARM_CONCURRENCY = 2;
     DIRECT_MEDIA_SOURCE_METADATA_FIELDS = [
       "PosterUrl",
       "posterUrl",
@@ -1301,6 +1496,7 @@ function createSettingsDraftFromConfig(config = {}) {
     directHlsDash = DEFAULT_SETTINGS_MODAL_CONFIG.directHlsDash,
     sourceSameOriginProxy = DEFAULT_SETTINGS_MODAL_CONFIG.sourceSameOriginProxy,
     forceExternalProxy = DEFAULT_SETTINGS_MODAL_CONFIG.forceExternalProxy,
+    debugProxyHeaders = DEFAULT_SETTINGS_MODAL_CONFIG.debugProxyHeaders,
     upstreamTimeoutMs = DEFAULT_SETTINGS_MODAL_CONFIG.upstreamTimeoutMs,
     upstreamRetryAttempts = DEFAULT_SETTINGS_MODAL_CONFIG.upstreamRetryAttempts
   } = base;
@@ -1326,6 +1522,7 @@ function createSettingsDraftFromConfig(config = {}) {
     directHlsDash: directHlsDash === true,
     sourceSameOriginProxy: sourceSameOriginProxy !== false,
     forceExternalProxy: forceExternalProxy !== false,
+    debugProxyHeaders: debugProxyHeaders === true,
     upstreamTimeoutMs: clampInteger(
       upstreamTimeoutMs,
       DEFAULT_SETTINGS_MODAL_CONFIG.upstreamTimeoutMs,
@@ -1383,6 +1580,7 @@ function buildConfigFromSettingsDraft(baseConfig = {}, draft = {}) {
     directHlsDash: nextDraft.directHlsDash === true,
     sourceSameOriginProxy: nextDraft.sourceSameOriginProxy !== false,
     forceExternalProxy: nextDraft.forceExternalProxy !== false,
+    debugProxyHeaders: nextDraft.debugProxyHeaders === true,
     upstreamTimeoutMs: clampInteger(
       nextDraft.upstreamTimeoutMs,
       DEFAULT_SETTINGS_MODAL_CONFIG.upstreamTimeoutMs,
@@ -1431,6 +1629,7 @@ var init_settings_model = __esm({
       directHlsDash: true,
       sourceSameOriginProxy: true,
       forceExternalProxy: true,
+      debugProxyHeaders: false,
       wangpandirect: "",
       upstreamTimeoutMs: 3e4,
       upstreamRetryAttempts: 1
@@ -1588,7 +1787,7 @@ function normalizeNodeRecord(node = {}) {
   });
   const { secret: _legacySecret, ...restNode } = source;
   const normalizedName = String(source.name || "").trim();
-  const normalizedPath = normalizeNodePath(source.path, normalizedName);
+  const normalizedPath = normalizeNodePath(source.path || source.secret, normalizedName);
   const fallbackTargets = normalizeTargetList(source.targets, source.target);
   const lines = normalizeLines(source.lines, fallbackTargets);
   const targets = lines.length ? lines.map((line) => line.target) : fallbackTargets;
@@ -1724,7 +1923,7 @@ const sanitizeNodeHeaders=${sanitizeHeaders.toString()};
 const NODE_PATH_PHRASE_MAP=${JSON.stringify(NODE_PATH_PHRASE_MAP)};
 const NODE_PATH_PHRASE_ENTRIES=Object.entries(NODE_PATH_PHRASE_MAP).sort((left,right)=>right[0].length-left[0].length);
 const App={
-    nodes:[],tags:new Set(),tagCandidates:[],nodeNames:new Set(),nodePaths:new Set(),editing:null,editingActiveLineId:'',targetDraft:[],nodeHeadersEnabled:false,nodePathTouched:false,filterText:'',sortMode:'path',config:{theme:'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG),cfMetrics:{...DEFAULT_CF_METRICS_CONFIG}},settingsDraft:createSettingsDraftFromConfig({...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG)}),settingsAdvancedOpen:false,cfSettingsDraft:{...DEFAULT_CF_METRICS_CONFIG},proxyDialogNode:null,proxyMode:'custom',activeCardMenu:null,tcpingCache:{},visibleTargets:{},refreshPromise:null,clientRttPromise:null,clientRtt:{loading:false,medianMs:null,error:'',updatedAt:''},_filterTimeout:null,_lastFilterSignature:'',cfMetricsData:null,nodeActivityData:null,nodeActivityRefreshingPath:'',cfAutoRefreshTimer:null,nodeActivityRefreshTimer:null,nodeActivityLoading:false,_lastNodeActivitySignature:'',configManage:{includeAll:false},modalScrollLocked:false,modalScrollTop:0,cfDns:{loading:false,hostname:location.hostname||'',zoneName:'',exists:false,mode:'domain',modePinned:false,records:[],status:{kind:'idle',text:'未读取'},domainInput:'',ipInputs:[''],activeIpIndex:0,domainSupport:{checked:false,ipv4:null,ipv6:null,loading:false},domainHistory:[],ipHistory:[],lastError:'',lastMessage:'',lookupTimer:null,lookupSeq:0,fetchSeq:0},
+    nodes:[],tags:new Set(),tagCandidates:[],nodeNames:new Set(),nodePaths:new Set(),editing:null,editingActiveLineId:'',targetDraft:[],nodeHeadersEnabled:false,nodePathTouched:false,filterText:'',sortMode:'path',config:{theme:'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG),cfMetrics:{...DEFAULT_CF_METRICS_CONFIG}},settingsDraft:createSettingsDraftFromConfig({...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG)}),settingsAdvancedOpen:false,cfSettingsDraft:{...DEFAULT_CF_METRICS_CONFIG},proxyDialogNode:null,proxyMode:'custom',activeCardMenu:null,tcpingCache:{},_tcpingRequestsByTarget:{},_tcpingFreshWindowMs:3000,visibleTargets:{},refreshPromise:null,clientRttPromise:null,clientRtt:{loading:false,medianMs:null,error:'',updatedAt:''},_clientRttFreshWindowMs:60000,_filterTimeout:null,_lastFilterSignature:'',cfMetricsData:null,_cfMetricsFreshWindowMs:60000,nodeActivityData:null,nodeActivityRefreshingPath:'',cfAutoRefreshTimer:null,nodeActivityRefreshTimer:null,nodeActivityLoading:false,_nodeActivityFreshWindowMs:60000,_lastNodeActivitySignature:'',configManage:{includeAll:false},modalScrollLocked:false,modalScrollTop:0,cfDns:{loading:false,hostname:location.hostname||'',zoneName:'',exists:false,mode:'domain',modePinned:false,records:[],status:{kind:'idle',text:'未读取'},domainInput:'',ipInputs:[''],activeIpIndex:0,domainSupport:{checked:false,ipv4:null,ipv6:null,loading:false},domainHistory:[],ipHistory:[],lastError:'',lastMessage:'',lookupTimer:null,lookupSeq:0,fetchSeq:0},
     escapeHtml(str){if(str==null)return'';const map={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};return String(str).replace(/[&<>"']/g,m=>map[m]);},
     quoteJs(str){return JSON.stringify(String(str==null?'':str));},
     normalizeTarget(value){const raw=String(value||'').trim();if(!raw)return'';try{const url=new URL(raw);if(url.protocol!=='http:'&&url.protocol!=='https:')return'';let normalized=raw;while(normalized.endsWith('/'))normalized=normalized.slice(0,-1);return normalized;}catch(_){return'';}},
@@ -1789,17 +1988,19 @@ const App={
     writePreferredHistory(type,list){try{localStorage.setItem(this.getPreferredHistoryKey(type),JSON.stringify((Array.isArray(list)?list:[]).slice(0,4)));}catch(_){}},
     pushPreferredHistory(type,values){const incoming=(Array.isArray(values)?values:[values]).map(item=>String(item||'').trim()).filter(Boolean);if(!incoming.length)return;const next=[];for(const item of [...incoming,...this.readPreferredHistory(type)]){if(next.includes(item))continue;next.push(item);if(next.length>=4)break;}this.writePreferredHistory(type,next);if(type==='ip')this.cfDns.ipHistory=next;else this.cfDns.domainHistory=next;},
     async init(){const listPromise=this.requestNodeList();await this.loadConfig();this.cfDns=this.createDefaultCfDnsState();this.setTheme(this.config.theme||localStorage.getItem('theme')||'auto');this.updateClientRttPill();try{this.applyNodeListPayload(await listPromise,true);this.scheduleInitialCfMetricsLoad();}catch(e){this.toast('加载失败: '+e.message,'error');}this.loadClientRtt(true).catch(()=>{});this.updateSearchState();this.syncSortMenu();this.initPullToRefresh();this.syncCfAutoRefresh();this.syncNodeActivityAutoRefresh();document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrapper'))document.getElementById('main-menu').classList.remove('show');if(!e.target.closest('.tag-wrapper'))document.getElementById('tag-list').classList.remove('show');if(!e.target.closest('.settings-depth-picker'))document.getElementById('settings-prewarm-depth-menu')?.classList.remove('show');if(!e.target.closest('.card-more'))this.closeCardMenus();});document.addEventListener('keydown',e=>this.handleGlobalKeydown(e));},
-    async loadConfig(){try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'loadConfig'})});const data=await res.json();const explicitRedirectEntries=normalizeSharedRedirectRuleEntries(Array.isArray(data.redirectWhitelistEntries)&&data.redirectWhitelistEntries.length?data.redirectWhitelistEntries:data.redirectWhitelistDomains,MAX_SHARED_REDIRECT_RULES);const explicitRedirectDomains=Array.from(new Set(explicitRedirectEntries.map(item=>normalizeRedirectRuleHost(item?.domain)).filter(domain=>isHostLikeRedirectRule(domain))));const baseConfig={theme:data.theme||'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,thirdPartyProxies:Array.isArray(data.thirdPartyProxies)?data.thirdPartyProxies:[],redirectWhitelistEntries:explicitRedirectEntries,redirectWhitelistDomains:explicitRedirectDomains,tcping:cloneTcpingConfig(data.tcping||{}),enableH2:data.enableH2===true,enableH3:data.enableH3===true,peakDowngrade:data.peakDowngrade!==false,protocolFallback:data.protocolFallback!==false,enablePrewarm:data.enablePrewarm!==false,prewarmDepth:data.prewarmDepth,prewarmCacheTtl:data.prewarmCacheTtl,directStaticAssets:data.directStaticAssets!==false,directHlsDash:data.directHlsDash!==false,sourceSameOriginProxy:data.sourceSameOriginProxy!==false,forceExternalProxy:data.forceExternalProxy!==false,upstreamTimeoutMs:data.upstreamTimeoutMs,upstreamRetryAttempts:data.upstreamRetryAttempts,cfMetrics:{...DEFAULT_CF_METRICS_CONFIG,...(data.cfMetrics||{})}};this.settingsDraft=createSettingsDraftFromConfig(baseConfig);this.config=buildConfigFromSettingsDraft(baseConfig,this.settingsDraft);this.config.theme=baseConfig.theme;this.config.cfMetrics=baseConfig.cfMetrics;this.cfSettingsDraft={...this.config.cfMetrics};}catch(_){const fallbackConfig={theme:'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG),cfMetrics:{...DEFAULT_CF_METRICS_CONFIG}};this.settingsDraft=createSettingsDraftFromConfig(fallbackConfig);this.config=buildConfigFromSettingsDraft(fallbackConfig,this.settingsDraft);this.config.theme=fallbackConfig.theme;this.config.cfMetrics=fallbackConfig.cfMetrics;this.cfSettingsDraft={...this.config.cfMetrics};}},
-    async requestNodeList(){const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'list'})});if(res.status===401){location.reload();throw new Error('未登录');}return res.json();},
+    async loadConfig(){try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'loadConfig'})});const data=await res.json();const explicitRedirectEntries=normalizeSharedRedirectRuleEntries(Array.isArray(data.redirectWhitelistEntries)&&data.redirectWhitelistEntries.length?data.redirectWhitelistEntries:data.redirectWhitelistDomains,MAX_SHARED_REDIRECT_RULES);const explicitRedirectDomains=Array.from(new Set(explicitRedirectEntries.map(item=>normalizeRedirectRuleHost(item?.domain)).filter(domain=>isHostLikeRedirectRule(domain))));const baseConfig={theme:data.theme||'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,thirdPartyProxies:Array.isArray(data.thirdPartyProxies)?data.thirdPartyProxies:[],redirectWhitelistEntries:explicitRedirectEntries,redirectWhitelistDomains:explicitRedirectDomains,tcping:cloneTcpingConfig(data.tcping||{}),enableH2:data.enableH2===true,enableH3:data.enableH3===true,peakDowngrade:data.peakDowngrade!==false,protocolFallback:data.protocolFallback!==false,enablePrewarm:data.enablePrewarm!==false,prewarmDepth:data.prewarmDepth,prewarmCacheTtl:data.prewarmCacheTtl,directStaticAssets:data.directStaticAssets!==false,directHlsDash:data.directHlsDash!==false,sourceSameOriginProxy:data.sourceSameOriginProxy!==false,forceExternalProxy:data.forceExternalProxy!==false,debugProxyHeaders:data.debugProxyHeaders===true,upstreamTimeoutMs:data.upstreamTimeoutMs,upstreamRetryAttempts:data.upstreamRetryAttempts,cfMetrics:{...DEFAULT_CF_METRICS_CONFIG,...(data.cfMetrics||{})}};this.settingsDraft=createSettingsDraftFromConfig(baseConfig);this.config=buildConfigFromSettingsDraft(baseConfig,this.settingsDraft);this.config.theme=baseConfig.theme;this.config.cfMetrics=baseConfig.cfMetrics;this.cfSettingsDraft={...this.config.cfMetrics};}catch(_){const fallbackConfig={theme:'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG),cfMetrics:{...DEFAULT_CF_METRICS_CONFIG}};this.settingsDraft=createSettingsDraftFromConfig(fallbackConfig);this.config=buildConfigFromSettingsDraft(fallbackConfig,this.settingsDraft);this.config.theme=fallbackConfig.theme;this.config.cfMetrics=fallbackConfig.cfMetrics;this.cfSettingsDraft={...this.config.cfMetrics};}},
+    async requestNodeList(){const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'list'})});if(res.status===401){location.reload();throw new Error('未登录');}const data=await res.json().catch(()=>({}));if(!res.ok||data.error)throw new Error(data.error||'加载节点列表失败');return data;},
     applyNodeListPayload(data,silent=false){const nextActivityMap=(data&&typeof data.nodeActivity==='object')?data.nodeActivity:{};const nextAvailable=data.nodeActivityAvailable===true;this.nodes=(data.nodes||[]).map(n=>this.normalizeNode(n));this.updateTags();this._lastNodeActivitySignature=this.getNodeActivitySignature(nextActivityMap);this.nodeActivityData={nodeActivityAvailable:nextAvailable,nodeActivity:nextActivityMap,generatedAt:data.generatedAt||''};if(!this.hasCfMetricsConfig()||(this.config.cfMetrics||{}).showCard===false){this.cancelInitialCfMetricsLoad();this.cfMetricsData=null;}this.renderList();this.renderCfCardSlot();if(!silent)this.toast('列表已更新');},
     cancelInitialCfMetricsLoad(){if(this.initialCfMetricsTimer){clearTimeout(this.initialCfMetricsTimer);this.initialCfMetricsTimer=null;}},
     scheduleInitialCfMetricsLoad(){this.cancelInitialCfMetricsLoad();if(!this.hasCfMetricsConfig()||(this.config.cfMetrics||{}).showCard===false)return;this.initialCfMetricsTimer=setTimeout(()=>{this.initialCfMetricsTimer=null;this.loadCfMetrics(true).catch(()=>{});},180);},
     async refresh(silent=false){if(this.refreshPromise)return this.refreshPromise;this.refreshPromise=(async()=>{try{const data=await this.requestNodeList();this.applyNodeListPayload(data,silent);}catch(e){this.toast('加载失败: '+e.message,'error');}finally{this.refreshPromise=null;}})();return this.refreshPromise;},
     median(values){const sorted=(Array.isArray(values)?values:[]).filter(value=>Number.isFinite(value)).slice().sort((a,b)=>a-b);if(!sorted.length)return null;const mid=Math.floor(sorted.length/2);return sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2;},
+    getTimestampAgeMs(input,now=Date.now()){const ts=Date.parse(String(input||''));return Number.isFinite(ts)?Math.max(0,now-ts):Infinity;},
+    isFreshTimestamp(input,windowMs,now=Date.now()){const ttl=Number(windowMs);return Number.isFinite(ttl)&&ttl>0&&this.getTimestampAgeMs(input,now)<ttl;},
     getClientRttTone(value){const medianMs=Number(value);if(!Number.isFinite(medianMs)||medianMs<0)return{className:'',label:'--'};if(medianMs<=80)return{className:'excellent',label:'优秀'};if(medianMs<=150)return{className:'normal',label:'一般'};return{className:'poor',label:'较差'};},
     updateClientRttPill(){const pill=document.getElementById('client-rtt-pill');const valueEl=document.getElementById('client-rtt-value');const refreshBtn=document.getElementById('client-rtt-refresh');if(!pill||!valueEl||!refreshBtn)return;const state=this.clientRtt||{};const medianMs=Number(state.medianMs);const hasMedian=Number.isFinite(medianMs)&&medianMs>=0;const isLoading=state.loading===true;const error=String(state.error||'').trim();const tone=this.getClientRttTone(medianMs);pill.classList.toggle('loading',isLoading);pill.classList.toggle('error',!isLoading&&!!error);refreshBtn.classList.toggle('loading',isLoading);refreshBtn.disabled=isLoading;valueEl.classList.remove('excellent','normal','poor');if(hasMedian&&tone.className)valueEl.classList.add(tone.className);valueEl.textContent=isLoading?'测量中...':hasMedian?(Math.round(medianMs)+'ms'):'--';refreshBtn.title=isLoading?'正在测量 RTT':'刷新 RTT';pill.title=isLoading?'正在测量当前浏览器到 Cloudflare 边缘的往返时延':hasMedian?('当前浏览器到 Cloudflare 边缘的往返时延，中位数 '+Math.round(medianMs)+'ms（'+tone.label+'；<=80ms 优秀，81-150ms 一般，>150ms 较差）'):(error?('RTT 测量失败：'+error):'当前浏览器到 Cloudflare 边缘的往返时延');},
     async measureClientRttSample(timeoutMs=4000){const startedAt=performance.now();const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),timeoutMs);try{const res=await fetch('/__client_rtt__?_='+(Date.now())+'-'+Math.random().toString(16).slice(2),{method:'GET',cache:'no-store',credentials:'same-origin',headers:{'Cache-Control':'no-cache','Pragma':'no-cache'},signal:controller.signal});try{res.body?.cancel?.();}catch(_){}if(!res.ok&&res.status!==204)throw new Error('probe failed');return performance.now()-startedAt;}finally{clearTimeout(timeout);}},
-    async loadClientRtt(force=false){if(this.clientRttPromise)return this.clientRttPromise;if(force===true||!this.clientRtt.updatedAt){this.clientRtt={...(this.clientRtt||{}),loading:true,error:''};this.updateClientRttPill();}this.clientRttPromise=(async()=>{try{const samples=[];for(let i=0;i<3;i+=1){const sample=await this.measureClientRttSample();if(Number.isFinite(sample))samples.push(sample);}const medianMs=this.median(samples);if(medianMs==null)throw new Error('未获取到有效样本');this.clientRtt={loading:false,medianMs,error:'',updatedAt:new Date().toISOString()};}catch(e){this.clientRtt={...(this.clientRtt||{}),loading:false,error:e.message||'测量失败',updatedAt:this.clientRtt?.updatedAt||''};}finally{this.clientRttPromise=null;this.updateClientRttPill();}return this.clientRtt;})();return this.clientRttPromise;},
+    async loadClientRtt(force=false){if(this.clientRttPromise)return this.clientRttPromise;if(!force&&this.isFreshTimestamp(this.clientRtt?.updatedAt,this._clientRttFreshWindowMs)){this.updateClientRttPill();return this.clientRtt;}if(force===true||!this.clientRtt.updatedAt){this.clientRtt={...(this.clientRtt||{}),loading:true,error:''};this.updateClientRttPill();}this.clientRttPromise=(async()=>{try{const samples=[];for(let i=0;i<3;i+=1){const sample=await this.measureClientRttSample();if(Number.isFinite(sample))samples.push(sample);}const medianMs=this.median(samples);if(medianMs==null)throw new Error('未获取到有效样本');this.clientRtt={loading:false,medianMs,error:'',updatedAt:new Date().toISOString()};}catch(e){this.clientRtt={...(this.clientRtt||{}),loading:false,error:e.message||'测量失败',updatedAt:this.clientRtt?.updatedAt||''};}finally{this.clientRttPromise=null;this.updateClientRttPill();}return this.clientRtt;})();return this.clientRttPromise;},
     async refreshClientRtt(event){event?.preventDefault?.();event?.stopPropagation?.();await this.loadClientRtt(true);},
     async refreshDashboard(silent=false){await Promise.all([this.refresh(silent),this.loadClientRtt(true)]);},
     updateTags(){this.tags.clear();this.nodeNames.clear();this.nodePaths.clear();this.nodes.forEach(n=>{const tag=String(n.tag||'').trim();if(tag)this.tags.add(tag);if(n.name)this.nodeNames.add(n.name);if(n.path)this.nodePaths.add(n.path);});this.tagCandidates=Array.from(this.tags).sort((a,b)=>a.localeCompare(b,'zh'));},
@@ -1825,8 +2026,86 @@ const App={
         });
         return source;
     },
+    getNormalizedFilterText(value){return String(value||'').trim();},
     getFilteredNodes(query=this.filterText){const t=String(query||'').trim().toLowerCase();const source=!t?this.nodes:this.nodes.filter(n=>String(n.name||'').toLowerCase().includes(t)||String(n.path||'').toLowerCase().includes(t)||(n.tag&&String(n.tag).toLowerCase().includes(t)));return this.getSortedNodes(source);},
-    getFilterSignature(query=this.filterText){return this.getFilteredNodes(query).map(n=>String(n.path||'')).join('');},
+    getFilteredNodesResult(query=this.filterText){const filtered=this.getFilteredNodes(query);return{filtered,signature:filtered.map(n=>String(n.path||'')).join('')};},
+    getFilterSignature(query=this.filterText){return this.getFilteredNodesResult(query).signature;},
+    getTcpingCacheKey(target){return this.normalizeTarget(target)||'';},
+    isTcpingResultFresh(entry,target,now=Date.now()){return !!entry&&!entry.loading&&entry.target===target&&Number.isFinite(entry.updatedAtMs)&&now-entry.updatedAtMs<this._tcpingFreshWindowMs;},
+    getFreshTcpingResult(target,now=Date.now()){
+        const normalizedTarget=this.getTcpingCacheKey(target);
+        if(!normalizedTarget)return null;
+        for(const entry of Object.values(this.tcpingCache||{})){
+            if(this.isTcpingResultFresh(entry,normalizedTarget,now))return entry;
+        }
+        return null;
+    },
+    getNodeCardRenderSignature(n){
+        const path=String(n?.path||'');
+        const ping=this.tcpingCache[path]||{};
+        const activity=this.getNodeActivity(path);
+        const tcpCfg=this.config.tcping?.tcp||DEFAULT_TCPING_CONFIG.tcp;
+        const headCfg=this.config.tcping?.head||DEFAULT_TCPING_CONFIG.head;
+        const recentUsageText=this.nodeActivityRefreshingPath===path?'刷新中...':(activity?this.formatRecentUsageTime(activity.lastSeenAt):'未观看');
+        return JSON.stringify({
+            name:String(n?.name||''),
+            path,
+            tag:String(n?.tag||''),
+            remark:String(n?.remark||''),
+            targets:this.getNodeTargets(n),
+            targetVisible:this.visibleTargets[path]===true,
+            menuOpen:this.activeCardMenu===path,
+            pingLoading:ping.loading===true,
+            ipLocation:String(ping.ipLocation||''),
+            edgeTcpMs:ping.edgeTcpMs??null,
+            edgeHeadMs:ping.edgeHeadMs??null,
+            headMode:String(ping.headMode||''),
+            note:String(ping.note||''),
+            recentUsageText,
+            tcpLow:Number(tcpCfg.latencyWarnLow),
+            tcpHigh:Number(tcpCfg.latencyWarnHigh),
+            headLow:Number(headCfg.latencyWarnLow),
+            headHigh:Number(headCfg.latencyWarnHigh)
+        });
+    },
+    createNodeCardElement(n,signature=''){
+        const tpl=document.createElement('template');
+        tpl.innerHTML=this.renderNodeCard(n);
+        const next=tpl.content.firstElementChild;
+        if(!next)return null;
+        next.dataset.cardPath=String(n?.path||'');
+        next.dataset.renderSignature=String(signature||this.getNodeCardRenderSignature(n));
+        return next;
+    },
+    syncRenderedNodeCards(container,filtered){
+        const visiblePaths=new Set(filtered.map(node=>String(node?.path||'')).filter(Boolean));
+        Array.from(container.querySelectorAll('.card[data-card-path]')).forEach(card=>{if(!visiblePaths.has(String(card.dataset.cardPath||'')))card.remove();});
+        let cursor=container.firstElementChild;
+        filtered.forEach(node=>{
+            const path=String(node?.path||'');
+            if(!path)return;
+            const signature=this.getNodeCardRenderSignature(node);
+            let element=document.getElementById(this.makeCardDomId(path));
+            if(!element){
+                element=this.createNodeCardElement(node,signature);
+                if(!element)return;
+                container.insertBefore(element,cursor);
+            }else if(element.dataset.renderSignature!==signature){
+                const next=this.createNodeCardElement(node,signature);
+                if(next){
+                    element.replaceWith(next);
+                    element=next;
+                }
+            }
+            if(element&&element!==cursor)container.insertBefore(element,cursor);
+            cursor=element?element.nextElementSibling:cursor;
+        });
+        while(cursor){
+            const next=cursor.nextElementSibling;
+            if(cursor.classList?.contains('card')||cursor.classList?.contains('empty-hint'))cursor.remove();
+            cursor=next;
+        }
+    },
     getLatencyTooltip(kind,ping){if(ping.loading)return'测试中，稍后查看';if(kind==='tcp'){if(ping.edgeTcpMs!=null)return'';if(ping.edgeHeadMs!=null)return'TCP 未连通，检查端口/回源策略';return'目标暂不可达，检查源站与端口';}if(ping.edgeHeadMs!=null)return'';if(ping.edgeTcpMs!=null)return'HEAD/Range 探测失败，可提高超时后重试';return'目标暂不可达，检查源站后重试';},
     renderNodeCard(n){
         const targets=this.getNodeTargets(n);
@@ -1858,9 +2137,10 @@ const App={
         const recentUsageHtml='<button class="recent-usage-btn" type="button" onclick=\\'App.refreshNodeUsage('+quotedPath+',event)\\' '+(this.nodeActivityRefreshingPath===n.path?'disabled':'')+'><span class="recent-usage-text">'+this.escapeHtml(recentUsageText)+'</span></button>';
         return '<div class="card" id="'+this.makeCardDomId(n.path)+'"><div class="card-top"><div class="card-pills">'+(n.tag?'<span class="tag">'+safeTag+'</span>':'')+'</div><div class="card-tools">'+recentUsageHtml+'<div class="card-more"><button class="icon-btn" onclick=\\'App.toggleCardMenu('+quotedPath+')\\'>'+ICONS.more+'</button><div class="card-menu '+(this.activeCardMenu===n.path?'show':'')+'" id="menu-'+safePath+'"><button onclick=\\'App.editNode('+quotedPath+')\\'>'+ICONS.edit+'编辑</button><button onclick=\\'App.cloneNode('+quotedPath+')\\'>'+ICONS.clone+'克隆</button><button class="danger" onclick=\\'App.del('+quotedPath+')\\'>'+ICONS.trash+'删除</button></div></div></div></div><div class="name-row"><div class="card-name-group"><div class="card-name" title="'+safeName+'">'+safeName+'</div><button class="card-path-inline" type="button" title="点击复制 /'+safePath+'" onclick=\\'App.copyNodePath('+quotedPath+',event)\\'>/'+safePath+'</button></div>'+(safeRemark?'<div class="card-remark" title="'+safeRemark+'">'+safeRemark+'</div>':'')+'</div><div class="target-metrics"><div class="info-row target-row"><span class="info-label">目标地址</span><span class="info-val '+(targetVisible?'':'hidden-value')+'" title="'+targetTitle+'">'+targetText+'</span><button class="inline-icon-btn" onclick=\\'App.toggleVis('+quotedPath+')\\'>'+(targetVisible?ICONS.show:ICONS.hide)+'</button></div><div class="tcping-panel"><div class="tcping-cell"><div class="tcping-value">'+ipLocation+'</div><div class="tcping-label">IP位置</div></div><div class="tcping-cell">'+tcpMetric+'<div class="tcping-label">边缘TCP</div></div><div class="tcping-cell">'+headMetric+'<div class="tcping-label">边缘HEAD</div></div><button class="tcping-refresh align-right '+(ping.loading?'loading':'')+'" onclick=\\'App.runTcping('+quotedPath+')\\'>'+ICONS.refresh+'</button>'+noteHtml+'</div></div><div class="info-row"><span class="info-label">代理地址</span><span class="info-val" title="'+proxyUrl+'">'+proxyUrl+'</span><button class="inline-icon-btn" onclick=\\'App.openProxyDialog('+quotedPath+')\\'>'+ICONS.copy+'</button></div></div>';
     },
-    updateNodeCard(path){const node=this.getNode(path);const targetEl=document.getElementById(this.makeCardDomId(path));if(!node||!targetEl){this.renderList();return;}const tpl=document.createElement('template');tpl.innerHTML=this.renderNodeCard(node);const next=tpl.content.firstElementChild;if(next)targetEl.replaceWith(next);},
-    renderList(){const container=document.getElementById('list-container');document.getElementById('node-count').innerText=this.nodes.length+' 个站点';const filtered=this.getFilteredNodes();this._lastFilterSignature=filtered.map(n=>String(n.path||'')).join('');const cardHtml=filtered.map(n=>this.renderNodeCard(n)).join('');if(!cardHtml){container.innerHTML='<div class="empty-hint">暂无节点</div>';return;}container.innerHTML=cardHtml;},
-    renderCfCardSlot(){const container=document.getElementById('cf-card-container');if(!container)return;const cfCard=this.renderCfMetricsCard();container.innerHTML=cfCard||'';},
+    updateNodeCard(path){const node=this.getNode(path);const targetEl=document.getElementById(this.makeCardDomId(path));if(!node){if(targetEl)targetEl.remove();return;}if(!targetEl){if(this.getFilteredNodes().some(item=>String(item?.path||'')===String(path||'')))this.renderList();return;}const signature=this.getNodeCardRenderSignature(node);if(targetEl.dataset.renderSignature===signature)return;const next=this.createNodeCardElement(node,signature);if(next)targetEl.replaceWith(next);},
+    renderList(filteredNodes=null,signature=''){const container=document.getElementById('list-container');document.getElementById('node-count').innerText=this.nodes.length+' 个站点';const result=Array.isArray(filteredNodes)?{filtered:filteredNodes,signature:String(signature||filteredNodes.map(n=>String(n.path||'')).join(''))}:this.getFilteredNodesResult();const filtered=result.filtered;this._lastFilterSignature=result.signature;if(!filtered.length){container.innerHTML='<div class="empty-hint">暂无站点</div>';return;}if(container.querySelector('.empty-hint'))container.innerHTML='';this.syncRenderedNodeCards(container,filtered);},
+    getCfCardRenderSignature(){const cfg=this.config.cfMetrics||{};const data=this.cfMetricsData||{};const metrics=data.metrics||{};return JSON.stringify({showCard:cfg.showCard!==false,hasConfig:this.hasCfMetricsConfig(),workerUrl:String(cfg.workerUrl||''),loading:data.loading===true,error:String(data.error||''),requests:metrics.requests||null,trafficSummary:metrics.trafficSummary||null,topPaths:Array.isArray(metrics.topPaths)?metrics.topPaths:[]});},
+    renderCfCardSlot(){const container=document.getElementById('cf-card-container');if(!container)return;const cfCard=this.renderCfMetricsCard();if(!cfCard){container.innerHTML='';container.dataset.renderSignature='';return;}const signature=this.getCfCardRenderSignature();if(container.dataset.renderSignature===signature&&container.innerHTML===cfCard)return;container.innerHTML=cfCard;container.dataset.renderSignature=signature;},
     hasCfMetricsConfig(){const cfg=this.config.cfMetrics||{};return !!(cfg.accountId&&cfg.apiToken&&cfg.workerUrl);},
     formatCfMetricValue(value,unit=''){if(value==null||Number.isNaN(value))return '--';const num=Number(value);if(unit==='MB'){if(num>1024)return (num/1024).toFixed(2)+' GB';return num.toFixed(2)+' MB';}const base=unit==='ms'?num<10?num.toFixed(2):num<100?num.toFixed(1):Math.round(num).toString():Math.round(num).toString();if(unit==='ms'&&num>=1000)return (num/1000).toFixed(num>=10000?0:1)+'k ms';return unit?base+' '+unit:base;},
     formatCfDataSize(bytes){if(bytes==null||Number.isNaN(bytes))return '--';const value=Math.max(0,Number(bytes)||0);if(value>=1024*1024*1024)return (value/(1024*1024*1024)).toFixed(2)+' GB';if(value>=1024*1024)return (value/(1024*1024)).toFixed(2)+' MB';if(value>=1024)return (value/1024).toFixed(2)+' KB';return Math.round(value)+' B';},
@@ -1891,22 +2171,23 @@ const App={
         return \`<div class="cf-top-paths"><div class="cf-top-title">Top10</div><div class="cf-top-scroll"><div class="cf-top-marquee" style="--cf-top-scroll-distance:\${distance}px;--cf-top-scroll-duration:\${duration}s">\${items}\${items}</div></div></div>\`;
     },
     renderCfMetricsCard(){const cfg=this.config.cfMetrics||{};if(cfg.showCard===false||!this.hasCfMetricsConfig())return'';const data=this.cfMetricsData||{};const metrics=data.metrics||{};const hasError=!!data.error;const hasMetrics=!!(metrics.requests||metrics.trafficSummary);const topPathsHtml=this.renderCfTopPaths(metrics.topPaths);return \`<div class="card cf-card"><div class="cf-card-header"><div class="cf-card-title"><span class="cf-title-text">CF指标</span><span class="cf-range-pill">近24小时</span></div><div class="cf-card-actions"><button class="icon-btn \${data.loading?'loading':''}" onclick="App.refreshCfMetrics()">\${ICONS.refresh}</button><a href="\${this.escapeHtml((this.config.cfMetrics||{}).workerUrl||'#')}" target="_blank" rel="noopener noreferrer" class="icon-btn">\${ICONS.external}</a></div></div>\${hasError?\`<div class="cf-empty">\${this.escapeHtml(data.error)}</div>\`:hasMetrics?\`<div class="cf-stack">\${this.renderCfPrimarySummaryRow(metrics.requests,metrics.trafficSummary)}\${topPathsHtml}</div>\`:\`<div class="cf-empty">\${data.loading?'加载中...':'暂无指标数据'}</div>\`}</div>\`;},
-    async loadCfMetrics(force=false){if(!this.hasCfMetricsConfig()){this.cfMetricsData=null;this.renderCfCardSlot();this.syncCfAutoRefresh();return null;}if((this.config.cfMetrics||{}).showCard===false){this.renderCfCardSlot();this.syncCfAutoRefresh();return this.cfMetricsData;}if(this.cfMetricsData?.loading&&!force)return this.cfMetricsData;this.cfMetricsData={...(this.cfMetricsData||{}),loading:true,error:''};this.renderCfCardSlot();try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'cfMetrics',rangeKey:'24h',mode:'full'})});const data=await res.json();if(!res.ok)throw new Error(data.error||'CF指标加载失败');this.cfMetricsData={...data,loading:false};}catch(e){this.cfMetricsData={enabled:true,loading:false,error:e.message||'CF指标加载失败',metrics:this.cfMetricsData?.metrics||null,bandwidthHint:'',domainTrafficHint:'',playbackHint:'',recentDomainsHint:''};}this.renderCfCardSlot();return this.cfMetricsData;},
+    async loadCfMetrics(force=false){if(!this.hasCfMetricsConfig()){this.cfMetricsData=null;this.renderCfCardSlot();this.syncCfAutoRefresh();return null;}if((this.config.cfMetrics||{}).showCard===false){this.renderCfCardSlot();this.syncCfAutoRefresh();return this.cfMetricsData;}if(!force&&document.visibilityState==='hidden')return this.cfMetricsData;if(!force&&this.isFreshTimestamp(this.cfMetricsData?.updatedAt||this.cfMetricsData?.generatedAt,this._cfMetricsFreshWindowMs))return this.cfMetricsData;if(this.cfMetricsData?.loading&&!force)return this.cfMetricsData;this.cfMetricsData={...(this.cfMetricsData||{}),loading:true,error:''};this.renderCfCardSlot();try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'cfMetrics',rangeKey:'24h',mode:'full'})});const data=await res.json();if(!res.ok)throw new Error(data.error||'CF指标加载失败');this.cfMetricsData={...data,loading:false,updatedAt:data.updatedAt||new Date().toISOString()};}catch(e){this.cfMetricsData={enabled:true,loading:false,error:e.message||'CF指标加载失败',metrics:this.cfMetricsData?.metrics||null,bandwidthHint:'',domainTrafficHint:'',playbackHint:'',recentDomainsHint:'',updatedAt:this.cfMetricsData?.updatedAt||''};}this.renderCfCardSlot();return this.cfMetricsData;},
     getNodeActivitySignature(map){if(!map||typeof map!=='object')return'';const entries=Object.entries(map).map(([k,v])=>[String(k),String(v?.lastSeenAt||''),Number(v?.requests)||0]).sort((a,b)=>a[0].localeCompare(b[0],'zh'));return JSON.stringify(entries);},
-    async loadNodeActivity(force=false){if(this.nodeActivityLoading&&!force)return this.nodeActivityData?.nodeActivity||null;this.nodeActivityLoading=true;try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'cfMetrics',rangeKey:'24h',mode:'activity'})});const data=await res.json();if(!res.ok)throw new Error(data.error||'节点活跃数据加载失败');const nextMap=(data&&typeof data.nodeActivity==='object')?data.nodeActivity:{};const nextSig=this.getNodeActivitySignature(nextMap);const nextAvailable=data.nodeActivityAvailable===true;const hasLocalMap=this.nodeActivityData&&typeof this.nodeActivityData.nodeActivity==='object';const prevAvailable=this.nodeActivityData?.nodeActivityAvailable===true;if(nextSig!==this._lastNodeActivitySignature||!hasLocalMap||prevAvailable!==nextAvailable){this._lastNodeActivitySignature=nextSig;this.nodeActivityData={nodeActivityAvailable:nextAvailable,nodeActivity:nextMap,generatedAt:data.generatedAt||''};this.renderList();}return nextMap;}catch(_){return null;}finally{this.nodeActivityLoading=false;}},
+    getChangedNodeActivityPaths(previousMap,nextMap){const allKeys=new Set([...Object.keys(previousMap||{}),...Object.keys(nextMap||{})]);return Array.from(allKeys).filter(key=>{const prev=previousMap?.[key];const next=nextMap?.[key];return String(prev?.lastSeenAt||'')!==String(next?.lastSeenAt||'')||(Number(prev?.requests)||0)!==(Number(next?.requests)||0);});},
+    async loadNodeActivity(force=false){if(!force&&document.visibilityState==='hidden')return this.nodeActivityData?.nodeActivity||null;if(!force&&this.isFreshTimestamp(this.nodeActivityData?.generatedAt,this._nodeActivityFreshWindowMs))return this.nodeActivityData?.nodeActivity||null;if(this.nodeActivityLoading&&!force)return this.nodeActivityData?.nodeActivity||null;this.nodeActivityLoading=true;try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'cfMetrics',rangeKey:'24h',mode:'activity'})});const data=await res.json();if(!res.ok)throw new Error(data.error||'节点活跃数据加载失败');const nextMap=(data&&typeof data.nodeActivity==='object')?data.nodeActivity:{};const nextSig=this.getNodeActivitySignature(nextMap);const nextAvailable=data.nodeActivityAvailable===true;const hasLocalMap=this.nodeActivityData&&typeof this.nodeActivityData.nodeActivity==='object';const prevAvailable=this.nodeActivityData?.nodeActivityAvailable===true;const previousMap=hasLocalMap?this.nodeActivityData.nodeActivity:{};const changedPaths=this.getChangedNodeActivityPaths(previousMap,nextMap);if(nextSig!==this._lastNodeActivitySignature||!hasLocalMap||prevAvailable!==nextAvailable){this._lastNodeActivitySignature=nextSig;this.nodeActivityData={nodeActivityAvailable:nextAvailable,nodeActivity:nextMap,generatedAt:data.generatedAt||''};if(this.sortMode==='recent'){this.renderList();return nextMap;}if(!hasLocalMap||prevAvailable!==nextAvailable){this.renderList();return nextMap;}changedPaths.forEach(path=>this.updateNodeCard(path));}return nextMap;}catch(_){return null;}finally{this.nodeActivityLoading=false;}},
     async refreshNodeUsage(path,event){event?.preventDefault?.();event?.stopPropagation?.();if(!path||this.nodeActivityRefreshingPath===path)return;this.nodeActivityRefreshingPath=path;this.updateNodeCard(path);try{await this.loadNodeActivity(true);}finally{this.nodeActivityRefreshingPath='';this.updateNodeCard(path);}},
     copyNodePath(path,event){event?.preventDefault?.();event?.stopPropagation?.();if(!path)return;this.copy('/'+String(path||''));},
     async refreshCfMetrics(){await this.loadCfMetrics(true);},
-    syncCfAutoRefresh(){clearInterval(this.cfAutoRefreshTimer);this.cfAutoRefreshTimer=null;const cfg=this.config.cfMetrics||{};const seconds=Math.max(30,Math.min(3600,Number(cfg.autoRefreshSeconds)||300));if(cfg.showCard!==false&&this.hasCfMetricsConfig())this.cfAutoRefreshTimer=setInterval(()=>this.loadCfMetrics(true),seconds*1000);},
+    syncCfAutoRefresh(){clearInterval(this.cfAutoRefreshTimer);this.cfAutoRefreshTimer=null;const cfg=this.config.cfMetrics||{};const seconds=Math.max(30,Math.min(3600,Number(cfg.autoRefreshSeconds)||300));if(cfg.showCard!==false&&this.hasCfMetricsConfig())this.cfAutoRefreshTimer=setInterval(()=>{if(document.visibilityState==='hidden')return;this.loadCfMetrics(false);},seconds*1000);},
     syncNodeActivityAutoRefresh(){
         clearInterval(this.nodeActivityRefreshTimer);
         this.nodeActivityRefreshTimer=null;
         const seconds=Math.max(30,Number(NODE_ACTIVITY_REFRESH_SECONDS)||300);
-        this.nodeActivityRefreshTimer=setInterval(()=>this.loadNodeActivity(false),seconds*1000);
+        this.nodeActivityRefreshTimer=setInterval(()=>{if(document.visibilityState==='hidden')return;this.loadNodeActivity(false);},seconds*1000);
     },
     updateSearchState(){const wrapper=document.querySelector('.toolbar-search');const hasValue=!!this.filterText;wrapper.classList.toggle('has-value',hasValue);document.getElementById('search-clear').classList.toggle('show',hasValue);},
-    filter(val){clearTimeout(this._filterTimeout);this._filterTimeout=setTimeout(()=>{const next=String(val||'').trim();const nextSignature=this.getFilterSignature(next);this.filterText=next;this.updateSearchState();if(nextSignature!==this._lastFilterSignature)this.renderList();},120);},
-    clearSearch(){document.getElementById('search-input').value='';const next='';const nextSignature=this.getFilterSignature(next);this.filterText=next;this.updateSearchState();if(nextSignature!==this._lastFilterSignature)this.renderList();document.getElementById('search-input').focus();},
+    filter(val){clearTimeout(this._filterTimeout);this._filterTimeout=setTimeout(()=>{const next=this.getNormalizedFilterText(val);if(next===this.filterText){this.updateSearchState();return;}const result=this.getFilteredNodesResult(next);this.filterText=next;this.updateSearchState();if(result.signature!==this._lastFilterSignature)this.renderList(result.filtered,result.signature);},120);},
+    clearSearch(){const input=document.getElementById('search-input');if(input)input.value='';const next='';if(next===this.filterText){this.updateSearchState();input?.focus();return;}const result=this.getFilteredNodesResult(next);this.filterText=next;this.updateSearchState();if(result.signature!==this._lastFilterSignature)this.renderList(result.filtered,result.signature);input?.focus();},
     syncSortMenu(){const pathBtn=document.getElementById('menu-sort-path');const recentBtn=document.getElementById('menu-sort-recent');pathBtn?.classList.toggle('active',this.sortMode==='path');recentBtn?.classList.toggle('active',this.sortMode==='recent');},
     setSortMode(mode,event){event?.stopPropagation?.();const next=mode==='recent'?'recent':'path';if(this.sortMode!==next){this.sortMode=next;this.renderList();}this.syncSortMenu();},
     toggleMenu(){document.getElementById('main-menu').classList.toggle('show');this.syncSortMenu();},
@@ -1920,7 +2201,7 @@ const App={
     buildConfigExportPayload(includeAll=false){const nodes=(Array.isArray(this.nodes)?this.nodes:[]).map(item=>this.normalizeNode(item));if(!includeAll)return nodes;return{type:'emby-mate-all-config',exportedAt:new Date().toISOString(),nodes,config:JSON.parse(JSON.stringify(this.config||{}))};},
     async exportConfigBundle(){const includeAll=this.configManage.includeAll===true;const blob=new Blob([JSON.stringify(this.buildConfigExportPayload(includeAll),null,2)],{type:'application/json'});const link=document.createElement('a');const objectUrl=URL.createObjectURL(blob);link.href=objectUrl;link.download=this.getConfigExportFilename(includeAll);link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),0);this.closeConfigManageModal();},
     triggerConfigImport(){document.getElementById('file-in')?.click();},
-    normalizeImportedNodes(list){return(Array.isArray(list)?list:[]).map(item=>this.normalizeNode({name:String(item?.name||'').trim(),path:String(item?.path||item?.name||'').trim(),targets:item?.targets,target:item?.target,lines:item?.lines,activeLineId:item?.activeLineId,headers:item?.headers,remark:String(item?.remark||'').trim(),tag:String(item?.tag||'').trim(),redirectWhitelistEnabled:item?.redirectWhitelistEnabled===true})).filter(item=>item.name&&item.path&&item.target);},
+    normalizeImportedNodes(list){return(Array.isArray(list)?list:[]).map(item=>this.normalizeNode({name:String(item?.name||'').trim(),path:String(item?.path||item?.secret||item?.name||'').trim(),targets:item?.targets,target:item?.target,lines:item?.lines,activeLineId:item?.activeLineId,headers:item?.headers,remark:String(item?.remark||'').trim(),tag:String(item?.tag||'').trim(),redirectWhitelistEnabled:item?.redirectWhitelistEnabled===true})).filter(item=>item.name&&item.path&&item.target);},
     parseImportedPayload(raw){if(Array.isArray(raw))return{nodes:this.normalizeImportedNodes(raw),config:null};if(raw&&typeof raw==='object')return{nodes:this.normalizeImportedNodes(raw.nodes),config:raw.config&&typeof raw.config==='object'&&!Array.isArray(raw.config)?raw.config:null};throw new Error('配置文件格式错误');},
     toggleTheme(){const current=document.documentElement.className==='dark'?'dark':'light';this.setTheme(current==='dark'?'light':'dark');},
     syncThemeButtons(finalTheme){const themeIcon=finalTheme==='dark'?ICONS.sun:ICONS.moon;const btn=document.getElementById('theme-btn');if(btn)btn.innerHTML=themeIcon;const menuBtn=document.getElementById('theme-menu-btn');if(menuBtn)menuBtn.innerHTML=themeIcon+' 主题切换';},
@@ -1959,21 +2240,62 @@ const App={
     async runTcping(path){
         const node=this.getNode(path);
         if(!node)return;
-        const target=this.getPrimaryTarget(node);
+        const target=this.getTcpingCacheKey(this.getPrimaryTarget(node));
         if(!target)return;
-        this.tcpingCache[path]={...(this.tcpingCache[path]||{}),loading:true};
+        if(this.tcpingCache[path]?.loading)return;
+        const now=Date.now();
+        const fresh=this.getFreshTcpingResult(target,now);
+        if(fresh){
+            this.tcpingCache[path]={...fresh,loading:false,target,updatedAtMs:fresh.updatedAtMs||now};
+            this.updateNodeCard(path);
+            return;
+        }
+        const cacheKey=this.getTcpingCacheKey(target);
+        const shared=this._tcpingRequestsByTarget[cacheKey];
+        if(shared){
+            this.tcpingCache[path]={...(this.tcpingCache[path]||{}),loading:true,target};
+            this.updateNodeCard(path);
+            try{
+                const data=await shared;
+                this.tcpingCache[path]={...data,loading:false,target,updatedAtMs:Date.now()};
+            }catch(_){
+                this.tcpingCache[path]={
+                    loading:false,
+                    ipLocation:'未知',
+                    edgeTcpMs:null,
+                    edgeHeadMs:null,
+                    headMode:'none',
+                    source:'failed',
+                    note:'延迟测试失败',
+                    target,
+                    updatedAtMs:Date.now()
+                };
+            }
+            this.updateNodeCard(path);
+            return;
+        }
+        this.tcpingCache[path]={...(this.tcpingCache[path]||{}),loading:true,target};
         this.updateNodeCard(path);
-        try{
+        const requestPromise=(async()=>{
             const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'tcping',target,force:true})});
             const data=await res.json();
-            this.tcpingCache[path]={
-                loading:false,
+            return {
                 ipLocation:data.ipLocation||'未知',
                 edgeTcpMs:data.edgeTcpMs??data.edgeMs??null,
                 edgeHeadMs:data.edgeHeadMs??null,
                 headMode:data.headMode||'none',
                 source:data.source||'unknown',
                 note:data.note||''
+            };
+        })();
+        this._tcpingRequestsByTarget[cacheKey]=requestPromise;
+        try{
+            const data=await requestPromise;
+            this.tcpingCache[path]={
+                loading:false,
+                ...data,
+                target,
+                updatedAtMs:Date.now()
             };
         }catch(_){
             this.tcpingCache[path]={
@@ -1983,8 +2305,12 @@ const App={
                 edgeHeadMs:null,
                 headMode:'none',
                 source:'failed',
-                note:'延迟测试失败'
+                note:'延迟测试失败',
+                target,
+                updatedAtMs:Date.now()
             };
+        }finally{
+            if(this._tcpingRequestsByTarget[cacheKey]===requestPromise)delete this._tcpingRequestsByTarget[cacheKey];
         }
         this.updateNodeCard(path);
     },
@@ -1998,7 +2324,7 @@ const App={
     closeSettingsModal(){document.getElementById('settings-modal').classList.remove('show');setTimeout(()=>{document.getElementById('settings-mask').style.display='none';this.syncModalScrollLock();},180);},
     resetSettingsModal(){const defaults={...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG)};this.settingsDraft=createSettingsDraftFromConfig(defaults);this.settingsAdvancedOpen=false;this.renderSettingsList();this.toast('已恢复默认设置');},
     preserveDraftRedirectWhitelistEntries(list){return (Array.isArray(list)?list:[]).slice(0,MAX_SHARED_REDIRECT_RULES).map((item,idx)=>({id:String(item?.id||('redirect-'+(idx+1))),name:String(item?.name||''),domain:String(item?.domain||'')}));},
-    renderSettingsList(){const draftRedirectEntries=this.preserveDraftRedirectWhitelistEntries(this.settingsDraft.redirectWhitelistEntries);this.settingsDraft=createSettingsDraftFromConfig({...DEFAULT_SETTINGS_MODAL_CONFIG,...this.settingsDraft});this.settingsDraft.redirectWhitelistEntries=draftRedirectEntries;const tcping=cloneTcpingConfig(this.settingsDraft.tcping||DEFAULT_TCPING_CONFIG);document.getElementById('tcping-tcp-count').value=tcping.tcp.count;document.getElementById('tcping-tcp-timeout').value=tcping.tcp.timeoutMs;document.getElementById('tcping-tcp-latency-low').value=tcping.tcp.latencyWarnLow;document.getElementById('tcping-tcp-latency-high').value=tcping.tcp.latencyWarnHigh;document.getElementById('tcping-head-count').value=tcping.head.count;document.getElementById('tcping-head-timeout').value=tcping.head.timeoutMs;document.getElementById('tcping-head-latency-low').value=tcping.head.latencyWarnLow;document.getElementById('tcping-head-latency-high').value=tcping.head.latencyWarnHigh;document.getElementById('settings-prewarm-cache-ttl').value=this.settingsDraft.prewarmCacheTtl;document.getElementById('settings-upstream-timeout-ms').value=this.settingsDraft.upstreamTimeoutMs;document.getElementById('settings-upstream-retry-attempts').value=this.settingsDraft.upstreamRetryAttempts;[['settings-enable-h2-switch','settings-enable-h2-text',this.settingsDraft.enableH2],['settings-enable-h3-switch','settings-enable-h3-text',this.settingsDraft.enableH3],['settings-peak-downgrade-switch','settings-peak-downgrade-text',this.settingsDraft.peakDowngrade],['settings-protocol-fallback-switch','settings-protocol-fallback-text',this.settingsDraft.protocolFallback],['settings-enable-prewarm-switch','settings-enable-prewarm-text',this.settingsDraft.enablePrewarm],['settings-direct-static-assets-switch','settings-direct-static-assets-text',this.settingsDraft.directStaticAssets],['settings-direct-hls-dash-switch','settings-direct-hls-dash-text',this.settingsDraft.directHlsDash],['settings-source-same-origin-proxy-switch','settings-source-same-origin-proxy-text',this.settingsDraft.sourceSameOriginProxy],['settings-force-external-proxy-switch','settings-force-external-proxy-text',this.settingsDraft.forceExternalProxy]].forEach(([switchId,textId,enabled])=>this.setSettingsSwitch(switchId,textId,enabled));this.syncPrewarmDepthMenu();this.syncSettingsAdvancedToggle();const root=document.getElementById('settings-proxy-list');const proxyList=Array.isArray(this.settingsDraft.thirdPartyProxies)?this.settingsDraft.thirdPartyProxies:[];if(!proxyList.length)root.innerHTML='<div class="redirect-whitelist-empty">暂无记录</div>';else root.innerHTML=proxyList.map((item,idx)=>\`<div class="proxy-item settings-card-item" data-third-party-proxy-row data-third-party-proxy-id="\${this.escapeHtml(item.id||('proxy-'+(idx+1)))}"><input data-third-party-proxy-name placeholder="名称" value="\${this.escapeHtml(item.name||'')}" oninput="App.updateThirdPartyProxy(\${idx},'name',this.value)"><input data-third-party-proxy-url placeholder="https://example.com" value="\${this.escapeHtml(item.url||'')}" oninput="App.updateThirdPartyProxy(\${idx},'url',this.value)"><button class="icon-action-btn" aria-label="删除反代" onclick="App.removeThirdPartyProxy(\${idx})">\${ICONS.del}</button></div>\`).join('');this.renderRedirectWhitelistSettingsList();},
+    renderSettingsList(){const draftRedirectEntries=this.preserveDraftRedirectWhitelistEntries(this.settingsDraft.redirectWhitelistEntries);this.settingsDraft=createSettingsDraftFromConfig({...DEFAULT_SETTINGS_MODAL_CONFIG,...this.settingsDraft});this.settingsDraft.redirectWhitelistEntries=draftRedirectEntries;const tcping=cloneTcpingConfig(this.settingsDraft.tcping||DEFAULT_TCPING_CONFIG);document.getElementById('tcping-tcp-count').value=tcping.tcp.count;document.getElementById('tcping-tcp-timeout').value=tcping.tcp.timeoutMs;document.getElementById('tcping-tcp-latency-low').value=tcping.tcp.latencyWarnLow;document.getElementById('tcping-tcp-latency-high').value=tcping.tcp.latencyWarnHigh;document.getElementById('tcping-head-count').value=tcping.head.count;document.getElementById('tcping-head-timeout').value=tcping.head.timeoutMs;document.getElementById('tcping-head-latency-low').value=tcping.head.latencyWarnLow;document.getElementById('tcping-head-latency-high').value=tcping.head.latencyWarnHigh;document.getElementById('settings-prewarm-cache-ttl').value=this.settingsDraft.prewarmCacheTtl;document.getElementById('settings-upstream-timeout-ms').value=this.settingsDraft.upstreamTimeoutMs;document.getElementById('settings-upstream-retry-attempts').value=this.settingsDraft.upstreamRetryAttempts;[['settings-enable-h2-switch','settings-enable-h2-text',this.settingsDraft.enableH2],['settings-enable-h3-switch','settings-enable-h3-text',this.settingsDraft.enableH3],['settings-peak-downgrade-switch','settings-peak-downgrade-text',this.settingsDraft.peakDowngrade],['settings-protocol-fallback-switch','settings-protocol-fallback-text',this.settingsDraft.protocolFallback],['settings-enable-prewarm-switch','settings-enable-prewarm-text',this.settingsDraft.enablePrewarm],['settings-direct-static-assets-switch','settings-direct-static-assets-text',this.settingsDraft.directStaticAssets],['settings-direct-hls-dash-switch','settings-direct-hls-dash-text',this.settingsDraft.directHlsDash],['settings-source-same-origin-proxy-switch','settings-source-same-origin-proxy-text',this.settingsDraft.sourceSameOriginProxy],['settings-force-external-proxy-switch','settings-force-external-proxy-text',this.settingsDraft.forceExternalProxy],['settings-debug-proxy-headers-switch','settings-debug-proxy-headers-text',this.settingsDraft.debugProxyHeaders]].forEach(([switchId,textId,enabled])=>this.setSettingsSwitch(switchId,textId,enabled));this.syncPrewarmDepthMenu();this.syncSettingsAdvancedToggle();const root=document.getElementById('settings-proxy-list');const proxyList=Array.isArray(this.settingsDraft.thirdPartyProxies)?this.settingsDraft.thirdPartyProxies:[];if(!proxyList.length)root.innerHTML='<div class="redirect-whitelist-empty">暂无记录</div>';else root.innerHTML=proxyList.map((item,idx)=>\`<div class="proxy-item settings-card-item" data-third-party-proxy-row data-third-party-proxy-id="\${this.escapeHtml(item.id||('proxy-'+(idx+1)))}"><input data-third-party-proxy-name placeholder="名称" value="\${this.escapeHtml(item.name||'')}" oninput="App.updateThirdPartyProxy(\${idx},'name',this.value)"><input data-third-party-proxy-url placeholder="https://example.com" value="\${this.escapeHtml(item.url||'')}" oninput="App.updateThirdPartyProxy(\${idx},'url',this.value)"><button class="icon-action-btn" aria-label="删除反代" onclick="App.removeThirdPartyProxy(\${idx})">\${ICONS.del}</button></div>\`).join('');this.renderRedirectWhitelistSettingsList();},
     renderRedirectWhitelistSettingsList(){const root=document.getElementById('settings-redirect-whitelist-list');if(!root)return;const list=Array.isArray(this.settingsDraft.redirectWhitelistEntries)?this.settingsDraft.redirectWhitelistEntries:[];if(!list.length)root.innerHTML='<div class="redirect-whitelist-empty">暂无记录</div>';else root.innerHTML=list.map((item,idx)=>\`<div class="proxy-item settings-card-item" data-redirect-rule-row data-redirect-rule-id="\${this.escapeHtml(item.id||('redirect-'+(idx+1)))}"><input data-redirect-rule-name placeholder="备注（可选）" value="\${this.escapeHtml(item.name||'')}" oninput="App.updateRedirectWhitelistEntry(\${idx},'name',this.value)"><input data-redirect-rule-domain placeholder="请输入域名或关键词" value="\${this.escapeHtml(item.domain||'')}" oninput="App.updateRedirectWhitelistEntry(\${idx},'domain',this.value)"><button class="icon-action-btn" aria-label="删除规则" onclick="App.removeRedirectWhitelistEntry(\${idx})">\${ICONS.del}</button></div>\`).join('');const addBtn=document.getElementById('settings-redirect-whitelist-add');if(addBtn){addBtn.disabled=false;addBtn.textContent=list.length>=MAX_SHARED_REDIRECT_RULES?'已达上限，删除后再新增':'添加规则';}},
     renderPreferredDnsSection(){const mode=this.cfDns.mode==='ip'?'ip':'domain';document.getElementById('cf-preferred-mode-domain')?.classList.toggle('active',mode==='domain');document.getElementById('cf-preferred-mode-ip')?.classList.toggle('active',mode==='ip');document.getElementById('cf-preferred-domain-panel')?.classList.toggle('hidden',mode!=='domain');document.getElementById('cf-preferred-ip-panel')?.classList.toggle('hidden',mode!=='ip');const preferredInput=document.getElementById('cf-preferred-domain');if(preferredInput&&preferredInput!==document.activeElement)preferredInput.value=this.cfDns.domainInput||'';this.renderPreferredIpList();this.renderPreferredDnsSupport();this.renderPreferredDnsHistory();},
     renderPreferredIpList(){const root=document.getElementById('cf-preferred-ip-list');if(!root)return;const inputs=Array.isArray(this.cfDns.ipInputs)&&this.cfDns.ipInputs.length?this.cfDns.ipInputs:[''];root.innerHTML=inputs.map((item,idx)=>\`<div class="settings-ip-row"><div class="preferred-dns-input"><input placeholder="请输入 IPv4 或 IPv6" value="\${this.escapeHtml(item||'')}" onfocus="App.focusPreferredIpInput(\${idx})" oninput="App.updatePreferredIpInput(\${idx}, this.value)"></div>\${inputs.length>1?\`<button class="icon-action-btn" type="button" aria-label="删除IP" onclick="App.removePreferredIpInput(\${idx})">\${ICONS.del}</button>\`:''}</div>\`).join('');},
@@ -3004,6 +3330,19 @@ ${renderSettingsToggleRow({
   })}
                     </div>`;
 }
+function renderDiagnosticsDebugBlock() {
+  return `
+                    <div class="settings-block">
+                        <h4 class="section-title">代理调试诊断</h4>
+${renderSettingsToggleRow({
+    label: "附加异常代理诊断头",
+    buttonId: "settings-debug-proxy-headers-switch",
+    textId: "settings-debug-proxy-headers-text",
+    onClick: "App.toggleSettingsFlag('debugProxyHeaders')",
+    note: "仅在异常媒体响应上附加额外 X-Proxy-* 头，可能暴露上游 host/status，排障完成后建议关闭。"
+  })}
+                    </div>`;
+}
 function renderUpstreamProtectionBlock() {
   return `
                     <div class="settings-block">
@@ -3046,6 +3385,8 @@ ${renderMetadataPrewarmBlock(ICONS)}
 ${renderDirectResourceBlock()}
                     <div class="settings-divider"></div>
 ${renderRedirectStrategyBlock()}
+                    <div class="settings-divider"></div>
+${renderDiagnosticsDebugBlock()}
                     <div class="settings-divider"></div>
 ${renderUpstreamProtectionBlock()}
                 </div>
@@ -3472,6 +3813,7 @@ function normalizeConfig(config = {}) {
     directHlsDash: config.directHlsDash !== false,
     sourceSameOriginProxy: config.sourceSameOriginProxy !== false,
     forceExternalProxy: config.forceExternalProxy !== false,
+    debugProxyHeaders: config.debugProxyHeaders === true,
     wangpandirect: String(config.wangpandirect || "").trim(),
     corsOrigins: String(config.corsOrigins || "").trim(),
     geoAllowlist: String(config.geoAllowlist || "").trim(),
@@ -4635,6 +4977,7 @@ init_defaults();
 init_auth();
 init_runtime_state();
 init_node_model();
+var NODE_INDEX_STORAGE_KEY = "sys:nodes-index";
 function normalizeNodeNames(names = []) {
   const seen = /* @__PURE__ */ new Set();
   const normalized = [];
@@ -4645,6 +4988,75 @@ function normalizeNodeNames(names = []) {
     normalized.push(name);
   }
   return normalized;
+}
+function mapStoredNodeListEntry(value, fallbackPath = "") {
+  const normalized = normalizeNodeRecord(value);
+  const path = String(normalized.path || fallbackPath || normalized.name || "").trim();
+  if (!path) return null;
+  return {
+    ...normalized,
+    name: normalized.name || path,
+    path
+  };
+}
+function cacheListedNodes(nodes = []) {
+  const now = Date.now();
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    const path = String(node?.path || "").trim();
+    if (!path) continue;
+    GLOBALS.NodeCache.set(path, {
+      data: node,
+      exp: now + Config.Defaults.CacheTTL
+    });
+  }
+}
+async function readStoredNodeIndex(kv) {
+  if (!kv || typeof kv.get !== "function") return null;
+  const raw = await kv.get(NODE_INDEX_STORAGE_KEY, { type: "json" });
+  if (raw === null || raw === void 0) return null;
+  if (!Array.isArray(raw)) return null;
+  const seen = /* @__PURE__ */ new Set();
+  const nodes = [];
+  for (const entry of raw) {
+    const mapped = mapStoredNodeListEntry(entry);
+    if (!mapped) continue;
+    const key = mapped.path.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    nodes.push(mapped);
+  }
+  return nodes;
+}
+async function writeStoredNodeIndex(kv, nodes = []) {
+  if (!kv || typeof kv.put !== "function") return;
+  const payload = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    const record = createStoredNodeRecord(node);
+    const path = String(record.path || "").trim();
+    if (!path) continue;
+    const key = path.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    payload.push(record);
+  }
+  await kv.put(NODE_INDEX_STORAGE_KEY, JSON.stringify(payload));
+}
+async function listStoredNodesFromKvKeys(kv) {
+  if (!kv || typeof kv.list !== "function" || typeof kv.get !== "function") return [];
+  const list = await kv.list({ prefix: "node:" });
+  const nodes = await Promise.all((list?.keys || []).map(async (key) => {
+    try {
+      const path = key.name.replace("node:", "");
+      let value = GLOBALS.NodeCache.get(path)?.data;
+      if (!value) value = await kv.get(key.name, { type: "json" });
+      if (!value) return null;
+      return mapStoredNodeListEntry(value, path);
+    } catch (_) {
+      return null;
+    }
+  }));
+  return nodes.filter((node) => node);
 }
 async function getStoredNode(nodePath, env, ctx) {
   const kv = Auth.getKV(env);
@@ -4683,24 +5095,27 @@ async function getStoredNode(nodePath, env, ctx) {
 async function listStoredNodes(env) {
   const kv = Auth.getKV(env);
   if (!kv) return [];
-  const list = await kv.list({ prefix: "node:" });
-  const nodes = await Promise.all((list?.keys || []).map(async (key) => {
-    try {
-      const path = key.name.replace("node:", "");
-      let value = GLOBALS.NodeCache.get(path)?.data;
-      if (!value) value = await kv.get(key.name, { type: "json" });
-      if (!value) return null;
-      const normalized = normalizeNodeRecord(value);
-      return {
-        ...normalized,
-        name: normalized.name || path,
-        path
-      };
-    } catch (_) {
-      return null;
-    }
-  }));
-  return nodes.filter((node) => node);
+  const indexedNodes = await readStoredNodeIndex(kv);
+  if (indexedNodes) {
+    cacheListedNodes(indexedNodes);
+    return indexedNodes;
+  }
+  const nodes = await listStoredNodesFromKvKeys(kv);
+  cacheListedNodes(nodes);
+  await writeStoredNodeIndex(kv, nodes);
+  return nodes;
+}
+async function listStoredNodePaths(env) {
+  const kv = Auth.getKV(env);
+  if (!kv) return [];
+  const indexedNodes = await readStoredNodeIndex(kv);
+  if (indexedNodes) {
+    return normalizeNodeNames(indexedNodes.map((node) => node.path));
+  }
+  const nodes = await listStoredNodesFromKvKeys(kv);
+  await writeStoredNodeIndex(kv, nodes);
+  cacheListedNodes(nodes);
+  return normalizeNodeNames(nodes.map((node) => node.path));
 }
 async function isStoredNodePathAvailable(env, newPath, oldPath = "") {
   const normalizedNewPath = String(newPath || "").trim();
@@ -4727,6 +5142,19 @@ async function writeStoredNodes(env, nodes = [], { previousPath = "", invalidate
     await kv.delete(`node:${previous}`);
     if (typeof invalidate === "function") await invalidate(previous);
   }
+  const existingNodes = await readStoredNodeIndex(kv) || await listStoredNodesFromKvKeys(kv);
+  const nextNodesByPath = new Map(existingNodes.map((node) => [String(node.path || "").toLowerCase(), node]));
+  for (const node of normalizedNodes) {
+    const mapped = mapStoredNodeListEntry(node);
+    if (!mapped) continue;
+    nextNodesByPath.set(mapped.path.toLowerCase(), mapped);
+  }
+  if (previous && !writtenPaths.includes(previous)) {
+    nextNodesByPath.delete(previous.toLowerCase());
+  }
+  const nextNodes = [...nextNodesByPath.values()];
+  cacheListedNodes(nextNodes);
+  await writeStoredNodeIndex(kv, nextNodes);
 }
 async function deleteStoredNodes(env, names = [], invalidate = null) {
   const kv = Auth.getKV(env);
@@ -4736,6 +5164,12 @@ async function deleteStoredNodes(env, names = [], invalidate = null) {
     await kv.delete(`node:${name}`);
     if (typeof invalidate === "function") await invalidate(name);
   }));
+  const existingNodes = await readStoredNodeIndex(kv) || await listStoredNodesFromKvKeys(kv);
+  const removedKeys = new Set(normalizedNames.map((name) => name.toLowerCase()));
+  const nextNodes = existingNodes.filter((node) => !removedKeys.has(String(node?.path || "").toLowerCase()));
+  normalizedNames.forEach((name) => GLOBALS.NodeCache.delete(name));
+  cacheListedNodes(nextNodes);
+  await writeStoredNodeIndex(kv, nextNodes);
 }
 async function pingTarget(target, timeoutMs) {
   const controller = new AbortController();
@@ -4906,13 +5340,14 @@ async function rememberRecentNodeUsage(globals, nodeName, executionContext = nul
   }
   return entry;
 }
-async function readRecentNodeUsageMap(globals, nodeNames = []) {
+async function readRecentNodeUsageMap(globals, nodeNames = [], options = {}) {
+  const allowStorageReads = options?.allowStorageReads !== false;
   const output = {};
   for (const rawName of Array.isArray(nodeNames) ? nodeNames : []) {
     const nodeName = String(rawName || "").trim();
     if (!nodeName) continue;
     let entry = getCachedRecentNodeUsage(globals, nodeName);
-    if (!entry) {
+    if (!entry && allowStorageReads) {
       entry = await readRecentNodeUsage(nodeName);
       if (entry) setCachedRecentNodeUsage(globals, nodeName, entry);
     }
@@ -5175,8 +5610,7 @@ var CFAnalytics = {
     return readRecentNodeUsageMap(GLOBALS, configuredNodePaths);
   },
   async listConfiguredNodePaths(env) {
-    const nodes = await listStoredNodes(env);
-    return Array.from(new Set((Array.isArray(nodes) ? nodes : []).map((node) => String(node?.path || node?.name || "").trim()).filter(Boolean)));
+    return listStoredNodePaths(env);
   },
   getRequestHost(request) {
     try {
@@ -5991,6 +6425,44 @@ function parseSingleByteRangeHeader(value) {
     openEnded: end === null
   };
 }
+function parseResponseByteRange(headers, fallbackLength = null) {
+  const contentRange = String(headers?.get?.("Content-Range") || "").trim();
+  const match = contentRange.match(/^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i);
+  if (match) {
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    const totalSize = match[3] === "*" ? null : Number(match[3]);
+    if (Number.isFinite(start) && Number.isFinite(end) && end >= start) {
+      return {
+        start,
+        end,
+        totalSize: Number.isFinite(totalSize) && totalSize > 0 ? totalSize : null
+      };
+    }
+  }
+  const normalizedLength = Number(fallbackLength);
+  if (Number.isFinite(normalizedLength) && normalizedLength > 0) {
+    return {
+      start: 0,
+      end: normalizedLength - 1,
+      totalSize: normalizedLength
+    };
+  }
+  return null;
+}
+function parseResponseByteRangeFromHeaders(headers) {
+  return parseResponseByteRange(headers, getResponseContentLength(headers));
+}
+function concatUint8Arrays(chunks, totalLength) {
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of Array.isArray(chunks) ? chunks : []) {
+    if (!chunk?.byteLength) continue;
+    output.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return output;
+}
 
 // src/proxy/diagnostics/playback-optimization.js
 init_constants();
@@ -6018,15 +6490,17 @@ function createPlaybackOptimizationBudgetState(request, requestState) {
   const range = parseSingleByteRangeHeader(request?.headers?.get?.("Range"));
   const boundedSize = range && range.end !== null ? range.end - range.start + 1 : null;
   const isDeepRange = !!range && range.start >= PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES;
+  const allowDeepRangeRelaxation = requestState?.allowEarlyJumpBudgetRelaxation === true;
   const isLargeBoundedRange = Number.isFinite(boundedSize) && boundedSize > PLAYBACK_OPTIMIZATION_MAX_BOUNDED_RANGE_BYTES;
+  const bypassForRange = isDeepRange && !allowDeepRangeRelaxation || isLargeBoundedRange;
   return {
     startedAt: Date.now(),
-    degraded: isDeepRange || isLargeBoundedRange,
+    degraded: bypassForRange,
     marked: false,
-    reason: isDeepRange || isLargeBoundedRange ? "range" : "",
+    reason: bypassForRange ? "range" : "",
     range,
-    shouldBypassWindow: isDeepRange || isLargeBoundedRange,
-    shouldBypassPrime: isDeepRange || isLargeBoundedRange
+    shouldBypassWindow: bypassForRange,
+    shouldBypassPrime: bypassForRange
   };
 }
 function markPlaybackOptimizationBudgetDegraded(globals, state, reason = "budget") {
@@ -6101,6 +6575,16 @@ function applyProxyCorsHeaders(modifiedHeaders, request, originOverride = null) 
   if (allowOrigin !== "*") {
     mergeVaryHeader(modifiedHeaders, "Origin");
   }
+}
+function appendCorsExposeHeaders(modifiedHeaders, extraHeaders = []) {
+  const current = String(modifiedHeaders.get("Access-Control-Expose-Headers") || DEFAULT_CORS_EXPOSE_HEADERS);
+  const merged = current.split(",").map((item) => String(item || "").trim()).filter(Boolean);
+  const extras = Array.isArray(extraHeaders) ? extraHeaders : [extraHeaders];
+  for (const item of extras) {
+    const normalized = String(item || "").trim();
+    if (normalized && !merged.includes(normalized)) merged.push(normalized);
+  }
+  modifiedHeaders.set("Access-Control-Expose-Headers", merged.join(", "));
 }
 function applyStaticStreamingCacheHeaders(modifiedHeaders, requestState, upstreamCacheStatus = "", options = {}) {
   if (requestState.isImage || requestState.isStaticFile || requestState.isSubtitle) {
@@ -6604,6 +7088,7 @@ function classifyRequestTraits(globals, input = {}) {
   const isSegment = /\.(?:ts|m4s)$/i.test(activePath);
   const isWsUpgrade = String(input.upgradeHeader || "").toLowerCase() === "websocket";
   const isSafeMethod = method === "GET" || method === "HEAD";
+  const isPlaybackInfo = /\/playbackinfo\b/i.test(activePath);
   const looksLikeVideoRoute = globals.Regex.Streaming.test(activePath) || /\/videos\/[^/]+\/(?:stream|original|download|file)/i.test(activePath) || /\/items\/[^/]+\/download/i.test(activePath) || requestUrl.searchParams.get("Static") === "true" || requestUrl.searchParams.get("Download") === "true";
   const nodeDirectSource = input.nodeDirectSourceEnabled === true;
   const directStaticAssets = input.directStaticAssetsEnabled === true && isSafeMethod && isStaticFile;
@@ -6624,6 +7109,7 @@ function classifyRequestTraits(globals, input = {}) {
     isManifest,
     isSegment,
     isWsUpgrade,
+    isPlaybackInfo,
     isMetadataPrewarm,
     looksLikeVideoRoute,
     isBigStream,
@@ -6850,6 +7336,15 @@ function getRedirectCacheKvBinding(env) {
 }
 
 // src/proxy/diagnostics/diagnostics.js
+var OPTIONAL_DEBUG_PROXY_HEADERS = [
+  "X-Proxy-Final-Host",
+  "X-Proxy-Upstream-Status",
+  "X-Proxy-Upstream-Type",
+  "X-Proxy-Upstream-Cache",
+  "X-Proxy-Playback-Mode",
+  "X-Proxy-Hops",
+  "X-Proxy-Debug-Reason"
+];
 function createDiagnostics(path, requestState) {
   return {
     route: "passthrough",
@@ -6864,6 +7359,14 @@ function createDiagnostics(path, requestState) {
     targetCount: 1,
     failover: "0",
     failoverReason: "",
+    finalHost: "",
+    upstreamStatus: 0,
+    upstreamContentType: "",
+    upstreamCacheStatus: "",
+    playbackMode: "",
+    debugReason: "",
+    debugProxyHeadersEnabled: requestState?.debugProxyHeaders === true,
+    debugProxyHeadersEligible: requestState?.isBigStream === true || requestState?.isPlaybackInfo === true,
     skipPlaybackStats: requestState?.isMetadataPrewarm === true || requestState?.isImage === true || requestState?.isStaticFile === true || requestState?.isSubtitle === true || requestState?.isManifest === true
   };
 }
@@ -6874,13 +7377,63 @@ function renderCors(request, originOverride = null) {
   headers.set("Access-Control-Max-Age", "86400");
   return new Response(null, { status: 204, headers });
 }
+function shouldEmitOptionalDebugHeaders(diagnostics) {
+  if (diagnostics?.debugProxyHeadersEnabled !== true) return false;
+  if (diagnostics?.debugProxyHeadersEligible !== true) return false;
+  const route = String(diagnostics?.route || "");
+  const upstreamStatus = Number(diagnostics?.upstreamStatus) || 0;
+  const playbackMode = String(diagnostics?.playbackMode || "").trim();
+  const debugReason = String(diagnostics?.debugReason || "").trim();
+  return route.includes("followed") || route.includes("redirect-cache") || route.startsWith("budget-degraded") || (Number(diagnostics?.hops) || 0) > 0 || upstreamStatus >= 400 || !!playbackMode || !!debugReason;
+}
 function applyDiagnosticsHeaders(headers, diagnostics, request) {
   const route = diagnostics?.route || "passthrough";
   headers.set("X-Proxy-Route", route);
+  if (!shouldEmitOptionalDebugHeaders(diagnostics)) return [];
+  const emitted = [];
+  const finalHost = String(diagnostics?.finalHost || "").trim();
+  const upstreamStatus = Number(diagnostics?.upstreamStatus) || 0;
+  const upstreamContentType = String(diagnostics?.upstreamContentType || "").trim();
+  const upstreamCacheStatus = String(diagnostics?.upstreamCacheStatus || "").trim();
+  const playbackMode = String(diagnostics?.playbackMode || "").trim();
+  const hops = Number(diagnostics?.hops) || 0;
+  const debugReason = String(diagnostics?.debugReason || "").trim();
+  if (finalHost) {
+    headers.set("X-Proxy-Final-Host", finalHost);
+    emitted.push("X-Proxy-Final-Host");
+  }
+  if (upstreamStatus > 0) {
+    headers.set("X-Proxy-Upstream-Status", String(upstreamStatus));
+    emitted.push("X-Proxy-Upstream-Status");
+  }
+  if (upstreamContentType) {
+    headers.set("X-Proxy-Upstream-Type", upstreamContentType);
+    emitted.push("X-Proxy-Upstream-Type");
+  }
+  if (upstreamCacheStatus) {
+    headers.set("X-Proxy-Upstream-Cache", upstreamCacheStatus);
+    emitted.push("X-Proxy-Upstream-Cache");
+  }
+  if (playbackMode) {
+    headers.set("X-Proxy-Playback-Mode", playbackMode);
+    emitted.push("X-Proxy-Playback-Mode");
+  }
+  if (hops > 0) {
+    headers.set("X-Proxy-Hops", String(hops));
+    emitted.push("X-Proxy-Hops");
+  }
+  if (debugReason) {
+    headers.set("X-Proxy-Debug-Reason", debugReason);
+    emitted.push("X-Proxy-Debug-Reason");
+  }
+  return emitted;
 }
 function finalizeProxyResponse(response, diagnostics, request) {
   const headers = new Headers(response.headers);
-  applyDiagnosticsHeaders(headers, diagnostics, request);
+  const emittedHeaders = applyDiagnosticsHeaders(headers, diagnostics, request);
+  if (emittedHeaders.length) {
+    appendCorsExposeHeaders(headers, OPTIONAL_DEBUG_PROXY_HEADERS.filter((name) => emittedHeaders.includes(name)));
+  }
   if (Number(response?.status) === 101 && response?.webSocket) {
     return new Response(null, {
       status: 101,
@@ -6901,6 +7454,9 @@ function finalizeDiagnostics(globals, response, diagnostics, request) {
   }
   return finalizeProxyResponse(response, diagnostics, request);
 }
+
+// src/proxy/pipeline/handle.js
+init_runtime_cache_cleanup();
 
 // src/proxy/upstream/dispatch-upstream.js
 init_runtime_state();
@@ -7043,7 +7599,10 @@ function getCachedExternalRedirectUrl(globals, method, url) {
     return null;
   }
   try {
-    return new URL(cached.url);
+    const redirectUrl = new URL(cached.url);
+    globals.ExternalRedirectCache.delete(cacheKey);
+    globals.ExternalRedirectCache.set(cacheKey, cached);
+    return redirectUrl;
   } catch (_) {
     globals.ExternalRedirectCache.delete(cacheKey);
     return null;
@@ -7056,6 +7615,7 @@ function rememberExternalRedirectUrl(globals, method, url, redirectUrl, options 
   const cacheKey = buildExternalRedirectCacheKey(method, url, {
     noiseQueryKeys: EXTERNAL_REDIRECT_CACHE_NOISE_QUERY_KEYS
   });
+  globals.ExternalRedirectCache.delete(cacheKey);
   globals.ExternalRedirectCache.set(cacheKey, {
     url: String(redirectUrl),
     exp: Date.now() + EXTERNAL_REDIRECT_CACHE_TTL_MS
@@ -7094,7 +7654,8 @@ function claimExternalRedirectResolution(globals, method, url) {
   });
   globals.ExternalRedirectInflight.set(cacheKey, {
     promise,
-    resolve: resolvePromise
+    resolve: resolvePromise,
+    startedAt: Date.now()
   });
   return {
     owner: true,
@@ -7540,6 +8101,15 @@ function createFetchWithRedirectsHandlers({
 
 // src/proxy/upstream/dispatch-upstream.js
 init_constants();
+function captureUpstreamResponseDiagnostics(diagnostics, response, finalUrl) {
+  if (!diagnostics || !response) return;
+  const finalHost = finalUrl instanceof URL ? finalUrl.host : "";
+  if (finalHost) diagnostics.finalHost = finalHost;
+  diagnostics.upstreamStatus = Number(response.status) || 0;
+  diagnostics.upstreamContentType = String(response.headers?.get?.("Content-Type") || "").trim();
+  diagnostics.upstreamCacheStatus = String(response.headers?.get?.("CF-Cache-Status") || "").trim();
+  diagnostics.debugReason = "";
+}
 async function dispatchUpstream({
   request,
   requestState,
@@ -7599,6 +8169,7 @@ async function dispatchUpstream({
         diagnostics.targetIndex = currentState.activeTargetIndex + 1;
         diagnostics.failover = attemptIndex > 0 ? "1" : "0";
         diagnostics.failoverReason = lastFailureReason;
+        captureUpstreamResponseDiagnostics(diagnostics, fetchResult.response, fetchResult.finalUrl);
         return enrichedResult;
       }
       const shouldRetryOnAlternateTarget = fetchResult.response && (RETRYABLE_ORIGIN_STATUSES.has(Number(fetchResult.response.status)) || shouldRetryMetadata404OnAlternateTarget(fetchResult.response, currentState));
@@ -7710,13 +8281,49 @@ async function dispatchStartupMediaUpstream({
   context,
   diagnostics
 }) {
-  return await dispatchFastPathUpstream({
+  const upstream = await dispatchFastPathUpstream({
     request,
     requestState,
     context,
     diagnostics,
     disableBasePathLearning: false
   });
+  if (!shouldFallbackStartupHtmlErrorToDirectExternal(upstream, context)) {
+    return upstream;
+  }
+  const preservedFailureDiagnostics = {
+    finalHost: String(diagnostics?.finalHost || "").trim(),
+    upstreamStatus: Number(diagnostics?.upstreamStatus) || 0,
+    upstreamContentType: String(diagnostics?.upstreamContentType || "").trim(),
+    upstreamCacheStatus: String(diagnostics?.upstreamCacheStatus || "").trim(),
+    debugReason: "startup-followed-html-4xx"
+  };
+  try {
+    upstream.response?.body?.cancel?.();
+  } catch (_) {
+  }
+  clearExternalRedirectUrl(
+    GLOBALS,
+    requestState?.method || request.method,
+    requestState?.activeFinalUrl,
+    context
+  );
+  const fallbackUpstream = await dispatchFastPathUpstream({
+    request,
+    requestState,
+    context: {
+      ...context,
+      forceExternalProxy: false
+    },
+    diagnostics,
+    disableBasePathLearning: false
+  });
+  diagnostics.finalHost = preservedFailureDiagnostics.finalHost || diagnostics.finalHost;
+  diagnostics.upstreamStatus = preservedFailureDiagnostics.upstreamStatus || diagnostics.upstreamStatus;
+  diagnostics.upstreamContentType = preservedFailureDiagnostics.upstreamContentType || diagnostics.upstreamContentType;
+  diagnostics.upstreamCacheStatus = preservedFailureDiagnostics.upstreamCacheStatus || diagnostics.upstreamCacheStatus;
+  diagnostics.debugReason = preservedFailureDiagnostics.debugReason;
+  return fallbackUpstream;
 }
 async function dispatchContinuationMediaUpstream({
   request,
@@ -7782,6 +8389,7 @@ async function dispatchFastPathUpstream({
       diagnostics.targetIndex = currentState.activeTargetIndex + 1;
       diagnostics.failover = attemptIndex > 0 ? "1" : "0";
       diagnostics.failoverReason = lastFailureReason;
+      captureUpstreamResponseDiagnostics(diagnostics, fetchResult.response, fetchResult.finalUrl);
       if (budgetState?.degraded) {
         markPlaybackOptimizationBudgetDegraded(GLOBALS, budgetState, budgetState.reason || "range");
       }
@@ -7887,6 +8495,16 @@ function buildBadGatewayErrorResponse(request, originOverride = null) {
     { status: 502, headers }
   );
 }
+function shouldFallbackStartupHtmlErrorToDirectExternal(upstream, context) {
+  if (context?.forceExternalProxy === false) return false;
+  if (upstream?.route !== "followed") return false;
+  const response = upstream?.response;
+  if (!response) return false;
+  const status = Number(response.status) || 0;
+  if (status < 400 || status >= 500) return false;
+  const contentType = String(response.headers?.get?.("Content-Type") || "").toLowerCase();
+  return contentType.includes("text/html");
+}
 
 // src/proxy/upstream/fallback-strategy.js
 init_runtime_state();
@@ -7957,6 +8575,307 @@ async function applyFallbackStrategy({
 
 // src/proxy/pipeline/handle.js
 init_static_cache();
+
+// src/proxy/media/playback-windows.js
+init_constants();
+var PLAYBACK_HEAD_WINDOW_MAX_BYTES = 8 * 1024 * 1024;
+var PLAYBACK_JUMP_WINDOW_MAX_BYTES = 4 * 1024 * 1024;
+var PLAYBACK_EARLY_JUMP_MIN_START_BYTES = 8 * 1024 * 1024;
+var PLAYBACK_WINDOW_TTL_MS = 20 * 1e3;
+var PLAYBACK_EARLY_JUMP_ASSISTS = 2;
+var PLAYBACK_WINDOW_GLOBAL_BUDGET_BYTES = 48 * 1024 * 1024;
+function isEligiblePlaybackRequest(requestState) {
+  const method = String(requestState?.method || "").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return false;
+  if (requestState?.isBigStream !== true) return false;
+  if (requestState?.isMetadataPrewarm === true) return false;
+  if (requestState?.isImage === true || requestState?.isStaticFile === true || requestState?.isSubtitle === true) return false;
+  if (requestState?.isManifest === true || requestState?.isSegment === true || requestState?.isWsUpgrade === true) return false;
+  return true;
+}
+function getSearchParams(requestState) {
+  if (requestState?.requestUrl instanceof URL) return requestState.requestUrl.searchParams;
+  if (requestState?.activeFinalUrl instanceof URL) return requestState.activeFinalUrl.searchParams;
+  return null;
+}
+function readPlaybackIdentifiers(requestState) {
+  const searchParams = getSearchParams(requestState);
+  const playSessionId = String(
+    searchParams?.get("PlaySessionId") || searchParams?.get("PlaySessionID") || ""
+  ).trim();
+  const mediaSourceId = String(
+    requestState?.requestedMediaSourceId || searchParams?.get("MediaSourceId") || searchParams?.get("mediasourceid") || ""
+  ).trim();
+  const canonicalMediaKey = requestState?.activeFinalUrl instanceof URL ? buildExternalRedirectCacheKey("GET", requestState.activeFinalUrl, {
+    noiseQueryKeys: EXTERNAL_REDIRECT_CACHE_NOISE_QUERY_KEYS
+  }) : "";
+  return {
+    canonicalMediaKey,
+    playSessionId,
+    mediaSourceId
+  };
+}
+function buildPlaybackWindowSessionKey(requestState) {
+  if (!isEligiblePlaybackRequest(requestState)) return "";
+  const { canonicalMediaKey, playSessionId, mediaSourceId } = readPlaybackIdentifiers(requestState);
+  if (!canonicalMediaKey || !playSessionId || !mediaSourceId) return "";
+  return `${canonicalMediaKey}|${playSessionId}|${mediaSourceId}`;
+}
+function isExpired(entry, now = Date.now()) {
+  return !entry || now - Number(entry.createdAt || 0) > PLAYBACK_WINDOW_TTL_MS;
+}
+function isExpiredHint(entry, now = Date.now()) {
+  return !entry || now - Number(entry.startupSuccessAt || 0) > PLAYBACK_WINDOW_TTL_MS;
+}
+function prunePlaybackSessionHints(map, now = Date.now()) {
+  for (const [key, entry] of map.entries()) {
+    if (isExpiredHint(entry, now)) map.delete(key);
+  }
+}
+function getPlaybackWindowEntryBytes(entry) {
+  return Math.max(0, Number(entry?.byteLength) || 0);
+}
+function deletePlaybackWindowEntry(globals, map, key, entry = null) {
+  const current = entry || map.get(key);
+  if (!current) return false;
+  map.delete(key);
+  globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) - getPlaybackWindowEntryBytes(current));
+  return true;
+}
+function setPlaybackWindowEntry(globals, map, key, entry) {
+  const previous = map.get(key);
+  if (previous) {
+    globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) - getPlaybackWindowEntryBytes(previous));
+  }
+  map.set(key, entry);
+  globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) + getPlaybackWindowEntryBytes(entry));
+}
+function prunePlaybackWindowMap(globals, map, now = Date.now()) {
+  for (const [key, entry] of map.entries()) {
+    if (isExpired(entry, now)) deletePlaybackWindowEntry(globals, map, key, entry);
+  }
+}
+function prunePlaybackWindows(globals, now = Date.now()) {
+  prunePlaybackWindowMap(globals, globals.PlaybackHeadWindowCache, now);
+  prunePlaybackWindowMap(globals, globals.PlaybackJumpWindowCache, now);
+  prunePlaybackSessionHints(globals.PlaybackSessionHints, now);
+}
+function findOldestPlaybackWindow(globals) {
+  let victim = null;
+  const consider = (map) => {
+    for (const [key, entry] of map.entries()) {
+      const at = Number(entry?.lastAccessAt || entry?.createdAt || 0);
+      if (!victim || at < victim.at) {
+        victim = { map, key, entry, at };
+      }
+    }
+  };
+  consider(globals.PlaybackHeadWindowCache);
+  consider(globals.PlaybackJumpWindowCache);
+  return victim;
+}
+function enforcePlaybackWindowBudget(globals, now = Date.now()) {
+  prunePlaybackWindows(globals, now);
+  let totalBytes = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0));
+  while (totalBytes > PLAYBACK_WINDOW_GLOBAL_BUDGET_BYTES) {
+    const victim = findOldestPlaybackWindow(globals);
+    if (!victim) break;
+    deletePlaybackWindowEntry(globals, victim.map, victim.key, victim.entry);
+    totalBytes = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0));
+  }
+}
+function rememberPlaybackWindow(globals, map, key, entry) {
+  if (!key || !entry?.byteLength) return;
+  setPlaybackWindowEntry(globals, map, key, entry);
+  enforcePlaybackWindowBudget(globals, entry.createdAt || Date.now());
+}
+function rememberStartupSuccess(globals, sessionKey, now = Date.now()) {
+  if (!sessionKey) return;
+  globals.PlaybackSessionHints.set(sessionKey, {
+    startupSuccessAt: now,
+    remainingEarlyJumpAssists: PLAYBACK_EARLY_JUMP_ASSISTS,
+    lastSeenAt: now
+  });
+}
+function canServePlaybackWindow(entry, range) {
+  if (!entry || !range) return false;
+  if (range.start < entry.cachedStart || range.start > entry.cachedEnd) return false;
+  if (range.end === null) return true;
+  return range.end <= entry.cachedEnd;
+}
+function createWindowHitResponse(entry, range, method = "GET") {
+  const end = range.end === null ? entry.cachedEnd : range.end;
+  if (!Number.isFinite(end) || end < range.start) return null;
+  const offsetStart = range.start - entry.cachedStart;
+  const offsetEnd = end - entry.cachedStart + 1;
+  const bodySlice = entry.bytes.subarray(offsetStart, offsetEnd);
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "no-store",
+    "Content-Length": String(bodySlice.byteLength),
+    "Content-Range": `bytes ${range.start}-${end}/${Number.isFinite(entry.totalSize) && entry.totalSize > 0 ? entry.totalSize : "*"}`
+  });
+  if (entry.contentType) headers.set("Content-Type", entry.contentType);
+  return new Response(String(method || "").toUpperCase() === "HEAD" ? null : bodySlice, {
+    status: 206,
+    headers
+  });
+}
+function resolvePlaybackWindowHit(globals, map, sessionKey, range, route, method, now = Date.now()) {
+  const entry = map.get(sessionKey);
+  if (isExpired(entry, now)) {
+    deletePlaybackWindowEntry(globals, map, sessionKey, entry);
+    return null;
+  }
+  if (!canServePlaybackWindow(entry, range)) return null;
+  entry.lastAccessAt = now;
+  const response = createWindowHitResponse(entry, range, method);
+  if (!response) return null;
+  return { route, response };
+}
+function maybeServePlaybackWindowHit(globals, requestState) {
+  if (!isEligiblePlaybackRequest(requestState)) return null;
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  if (!range) return null;
+  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
+  if (!sessionKey) return null;
+  const now = Date.now();
+  prunePlaybackWindows(globals, now);
+  return resolvePlaybackWindowHit(
+    globals,
+    globals.PlaybackHeadWindowCache,
+    sessionKey,
+    range,
+    "head-window",
+    requestState.method,
+    now
+  ) || resolvePlaybackWindowHit(
+    globals,
+    globals.PlaybackJumpWindowCache,
+    sessionKey,
+    range,
+    "jump-window",
+    requestState.method,
+    now
+  );
+}
+function beginPlaybackJumpAssist(globals, requestState) {
+  if (!isEligiblePlaybackRequest(requestState)) {
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  if (!range || range.start < PLAYBACK_EARLY_JUMP_MIN_START_BYTES) {
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
+  if (!sessionKey) {
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  const now = Date.now();
+  prunePlaybackWindows(globals, now);
+  const hint = globals.PlaybackSessionHints.get(sessionKey);
+  if (!hint || isExpiredHint(hint, now) || Number(hint.remainingEarlyJumpAssists || 0) <= 0) {
+    globals.PlaybackSessionHints.delete(sessionKey);
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  hint.remainingEarlyJumpAssists = Math.max(0, Number(hint.remainingEarlyJumpAssists || 0) - 1);
+  hint.lastSeenAt = now;
+  return {
+    captureJumpWindow: true,
+    allowDeepRangeBudgetRelaxation: range.start >= PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES
+  };
+}
+async function readPlaybackWindowBytes(readable, maxBytes) {
+  const reader = readable.getReader();
+  const chunks = [];
+  let totalLength = 0;
+  try {
+    while (totalLength < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      const remaining = maxBytes - totalLength;
+      const slice = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+      chunks.push(slice);
+      totalLength += slice.byteLength;
+      if (totalLength >= maxBytes) {
+        try {
+          await reader.cancel();
+        } catch (_) {
+        }
+        break;
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch (_) {
+    }
+  }
+  return totalLength > 0 ? concatUint8Arrays(chunks, totalLength) : new Uint8Array(0);
+}
+function shouldCaptureHeadWindow(requestState, response, sessionKey) {
+  if (!sessionKey) return false;
+  if (String(requestState?.method || "").toUpperCase() !== "GET") return false;
+  if (![200, 206].includes(Number(response?.status) || 0)) return false;
+  if (!response?.body) return false;
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  return !range || range.start === 0;
+}
+function shouldCaptureJumpWindow(requestState, response, sessionKey) {
+  if (!sessionKey) return false;
+  if (requestState?.playbackJumpAssist !== true) return false;
+  if (String(requestState?.method || "").toUpperCase() !== "GET") return false;
+  if (![200, 206].includes(Number(response?.status) || 0)) return false;
+  return !!response?.body;
+}
+async function capturePlaybackWindow(globals, map, sessionKey, captureBody, response, maxBytes, now = Date.now()) {
+  const bytes = await readPlaybackWindowBytes(captureBody, maxBytes);
+  if (!bytes.byteLength) return;
+  const responseRange = parseResponseByteRangeFromHeaders(response.headers);
+  if (!responseRange) return;
+  const cachedStart = Number(responseRange.start) || 0;
+  const cachedEnd = cachedStart + bytes.byteLength - 1;
+  rememberPlaybackWindow(globals, map, sessionKey, {
+    bytes,
+    byteLength: bytes.byteLength,
+    contentType: String(response.headers.get("Content-Type") || "").trim(),
+    totalSize: Number(responseRange.totalSize) || null,
+    cachedStart,
+    cachedEnd,
+    createdAt: now,
+    lastAccessAt: now
+  });
+}
+function attachPlaybackWindowCapture(globals, { requestState, response, executionContext }) {
+  if (!response?.body || !isEligiblePlaybackRequest(requestState)) {
+    return response?.body || null;
+  }
+  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
+  if (!sessionKey) return response.body;
+  const now = Date.now();
+  let captureTarget = null;
+  let captureMap = null;
+  let captureLimit = 0;
+  if (shouldCaptureHeadWindow(requestState, response, sessionKey)) {
+    rememberStartupSuccess(globals, sessionKey, now);
+    captureTarget = "head";
+    captureMap = globals.PlaybackHeadWindowCache;
+    captureLimit = PLAYBACK_HEAD_WINDOW_MAX_BYTES;
+  } else if (shouldCaptureJumpWindow(requestState, response, sessionKey)) {
+    captureTarget = "jump";
+    captureMap = globals.PlaybackJumpWindowCache;
+    captureLimit = PLAYBACK_JUMP_WINDOW_MAX_BYTES;
+  }
+  if (!captureTarget || !captureMap || captureLimit <= 0) return response.body;
+  const [clientBody, captureBody] = response.body.tee();
+  const captureTask = capturePlaybackWindow(globals, captureMap, sessionKey, captureBody, response, captureLimit, now).catch(() => {
+  });
+  if (typeof executionContext?.waitUntil === "function") executionContext.waitUntil(captureTask);
+  return clientBody;
+}
+
+// src/proxy/pipeline/handle.js
 init_metadata_cache();
 
 // src/proxy/pipeline/response-orchestrator.js
@@ -8039,6 +8958,23 @@ function buildTrackedStreamingResponse({
 // src/proxy/pipeline/response-orchestrator.js
 init_metadata_prewarm();
 init_metadata_cache();
+async function maybeCapturePlaybackInfoDiagnostics(requestState, response, diagnostics) {
+  if (diagnostics?.debugProxyHeadersEnabled !== true) return;
+  if (requestState?.isPlaybackInfo !== true) return;
+  if (!(Number(response?.status) >= 200 && Number(response?.status) < 300)) return;
+  const contentType = String(response?.headers?.get?.("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("json")) return;
+  try {
+    const payload = await response.clone().json();
+    const mediaSource = Array.isArray(payload?.MediaSources) ? payload.MediaSources[0] : null;
+    if (!mediaSource || typeof mediaSource !== "object") return;
+    const transcodeUrl = String(mediaSource.TranscodingUrl || "").trim();
+    const supportsDirectPlay = mediaSource.SupportsDirectPlay === true;
+    const supportsDirectStream = mediaSource.SupportsDirectStream === true;
+    diagnostics.playbackMode = transcodeUrl ? "transcode" : supportsDirectPlay ? "direct_play" : supportsDirectStream ? "direct_stream" : "unknown";
+  } catch (_) {
+  }
+}
 async function rewriteProxyResponse({
   request,
   requestState,
@@ -8053,6 +8989,9 @@ async function rewriteProxyResponse({
   }
   const modifiedHeaders = new Headers(response.headers);
   const upstreamCacheStatus = response.headers.get("CF-Cache-Status");
+  if (!diagnostics?.upstreamCacheStatus && upstreamCacheStatus) {
+    diagnostics.upstreamCacheStatus = String(upstreamCacheStatus).trim();
+  }
   applyBaseProxySecurityHeaders(modifiedHeaders);
   applyProxyCorsHeaders(modifiedHeaders, request, context?.finalOrigin || null);
   applyStaticStreamingCacheHeaders(modifiedHeaders, requestState, upstreamCacheStatus, {
@@ -8111,8 +9050,13 @@ async function rewriteProxyResponse({
     response,
     executionContext
   });
+  await maybeCapturePlaybackInfoDiagnostics(requestState, response, diagnostics);
   const responseBody = await prepareStreamingResponseBody({
-    responseBody: response.body
+    responseBody: attachPlaybackWindowCapture(GLOBALS, {
+      requestState,
+      response,
+      executionContext
+    })
   });
   const output = buildTrackedStreamingResponse({
     request,
@@ -8194,6 +9138,7 @@ var Proxy2 = {
       if (String(request?.method || "").toUpperCase() === "OPTIONS") {
         return renderCors(request, finalOrigin);
       }
+      maybeCleanupRuntimeCaches(GLOBALS);
       const blockedResponse = evaluateFirewall(request, runtimeConfig, finalOrigin);
       if (blockedResponse) {
         return blockedResponse;
@@ -8246,6 +9191,7 @@ var Proxy2 = {
       context.directHlsDash = runtimeConfig?.directHlsDash === true;
       context.sourceSameOriginProxy = runtimeConfig?.sourceSameOriginProxy !== false;
       context.forceExternalProxy = runtimeConfig?.forceExternalProxy !== false;
+      context.debugProxyHeaders = runtimeConfig?.debugProxyHeaders === true;
       context.wangpanDirectKeywords = String(runtimeConfig?.wangpandirect || "").trim();
       context.redirectCachePersistenceEnabled = runtimeConfig?.redirectCachePersistenceEnabled === true;
       context.redirectCachePersistenceTtlSeconds = normalizeRedirectCachePersistenceTtl(
@@ -8254,6 +9200,7 @@ var Proxy2 = {
       context.redirectCacheKv = getRedirectCacheKvBinding(env);
       if (shouldUseIndependentImagePath(independentImageGatewayState)) {
         const imageRequestState = await normalizeIndependentImageRequest(GLOBALS, request, path, context);
+        imageRequestState.debugProxyHeaders = context.debugProxyHeaders === true;
         const imageDiagnostics = createDiagnostics(path, imageRequestState);
         activeDiagnostics = imageDiagnostics;
         imageDiagnostics.skipPlaybackStats = true;
@@ -8293,6 +9240,7 @@ var Proxy2 = {
       }
       if (shouldUseIndependentMetadataPath(independentMetadataGatewayState)) {
         const metadataRequestState = await normalizeIndependentMetadataRequest(GLOBALS, request, path, context);
+        metadataRequestState.debugProxyHeaders = context.debugProxyHeaders === true;
         const metadataDiagnostics = createDiagnostics(path, metadataRequestState);
         activeDiagnostics = metadataDiagnostics;
         metadataDiagnostics.skipPlaybackStats = true;
@@ -8358,8 +9306,28 @@ var Proxy2 = {
         }
       }
       let requestState = await normalizeIncomingRequest(GLOBALS, request, path, context);
+      requestState.debugProxyHeaders = context.debugProxyHeaders === true;
+      requestState.playbackWindowSessionKey = buildPlaybackWindowSessionKey(requestState);
       const diagnostics = createDiagnostics(path, requestState);
       activeDiagnostics = diagnostics;
+      const playbackWindowHit = maybeServePlaybackWindowHit(GLOBALS, requestState);
+      if (playbackWindowHit) {
+        diagnostics.route = playbackWindowHit.route;
+        return await rewriteProxyResponse({
+          request,
+          requestState,
+          context,
+          response: playbackWindowHit.response,
+          diagnostics,
+          executionContext,
+          upstreamState: {
+            route: playbackWindowHit.route
+          }
+        });
+      }
+      const jumpAssist = beginPlaybackJumpAssist(GLOBALS, requestState);
+      requestState.playbackJumpAssist = jumpAssist.captureJumpWindow === true;
+      requestState.allowEarlyJumpBudgetRelaxation = jumpAssist.allowDeepRangeBudgetRelaxation === true;
       const useStartupMediaFastPath = shouldUseStartupMediaFastPath(requestState);
       const useContinuationMediaFastPath = !useStartupMediaFastPath && shouldUseContinuationMediaFastPath(requestState);
       let upstreamState = useStartupMediaFastPath ? await dispatchStartupMediaUpstream({
@@ -8471,6 +9439,7 @@ function applyRateLimit(globals, request, requestState, runtimeConfig, finalOrig
     entry = { count: 0, resetAt: now + 6e4 };
   }
   entry.count += 1;
+  globals.RateLimitCache.delete(clientIp);
   globals.RateLimitCache.set(clientIp, entry);
   if (entry.count > rpmLimit) {
     return new Response("Rate Limit Exceeded", {
@@ -8550,7 +9519,10 @@ async function deleteAdminNodesPayload(data, env) {
 async function listAdminNodesPayload(env) {
   const nodes = await listStoredNodes(env);
   const nodePaths = Array.from(new Set((Array.isArray(nodes) ? nodes : []).map((node) => String(node?.path || node?.name || "").trim()).filter(Boolean)));
-  const nodeActivity = await readRecentNodeUsageMap(GLOBALS, nodePaths);
+  const nodeActivity = await readRecentNodeUsageMap(GLOBALS, nodePaths, {
+    // Avoid doubling admin list subrequests on larger deployments.
+    allowStorageReads: nodePaths.length <= 20
+  });
   return {
     success: true,
     status: 200,
@@ -8654,7 +9626,7 @@ async function handleAdminApiAction(data, { request, env }) {
           nodeActivity: result.nodeActivity || {}
         }, { status: result.status });
       } catch (error) {
-        return jsonResponse2({ error: error.message });
+        return jsonResponse2({ error: error.message || "读取节点列表失败" }, { status: 500 });
       }
     }
     case "logout":
