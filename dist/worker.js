@@ -352,6 +352,9 @@ function createRuntimeGlobals() {
     PlaybackHeadWindowCache: /* @__PURE__ */ new Map(),
     PlaybackJumpWindowCache: /* @__PURE__ */ new Map(),
     PlaybackSessionHints: /* @__PURE__ */ new Map(),
+    PlaybackSessionStopGuard: /* @__PURE__ */ new Map(),
+    PlaybackContinuationLanes: /* @__PURE__ */ new Map(),
+    PlaybackContinuationStalls: /* @__PURE__ */ new Map(),
     PlaybackWindowBytesTotal: 0,
     MetadataPrewarmInflight: /* @__PURE__ */ new Map(),
     RateLimitCache: /* @__PURE__ */ new Map(),
@@ -369,6 +372,9 @@ function createRuntimeGlobals() {
       this.PlaybackHeadWindowCache.clear();
       this.PlaybackJumpWindowCache.clear();
       this.PlaybackSessionHints.clear();
+      this.PlaybackSessionStopGuard.clear();
+      this.PlaybackContinuationLanes.clear();
+      this.PlaybackContinuationStalls.clear();
       this.PlaybackWindowBytesTotal = 0;
     },
     CryptoKeyCache: /* @__PURE__ */ new Map(),
@@ -557,9 +563,88 @@ var init_icons = __esm({
       external: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7"></path><path d="M10 14L21 3"></path><path d="M21 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path></svg>`,
       settings: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>`,
       web: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3.5 12h17"></path><path d="M12 3c2.6 2.4 4.1 5.6 4.1 9S14.6 18.6 12 21"></path><path d="M12 3C9.4 5.4 7.9 8.6 7.9 12s1.5 6.6 4.1 9"></path></svg>`,
+      github: `<svg width="20" height="20" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M24 4C12.9543 4 4 12.9543 4 24C4 35.0457 12.9543 44 24 44C35.0457 44 44 35.0457 44 24C44 12.9543 35.0457 4 24 4ZM0 24C0 10.7452 10.7452 0 24 0C37.2548 0 48 10.7452 48 24C48 37.2548 37.2548 48 24 48C10.7452 48 0 37.2548 0 24Z" fill="currentColor"></path><path fill-rule="evenodd" clip-rule="evenodd" d="M19.1833 45.4716C18.9898 45.2219 18.9898 42.9973 19.1833 38.798C17.1114 38.8696 15.8024 38.7258 15.2563 38.3667C14.437 37.828 13.6169 36.1667 12.8891 34.9959C12.1614 33.8251 10.5463 33.64 9.89405 33.3783C9.24182 33.1165 9.07809 32.0496 11.6913 32.8565C14.3044 33.6634 14.4319 35.8607 15.2563 36.3745C16.0806 36.8883 18.0515 36.6635 18.9448 36.2519C19.8382 35.8403 19.7724 34.3078 19.9317 33.7007C20.1331 33.134 19.4233 33.0083 19.4077 33.0037C18.5355 33.0037 13.9539 32.0073 12.6955 27.5706C11.437 23.134 13.0581 20.2341 13.9229 18.9875C14.4995 18.1564 14.4485 16.3852 13.7699 13.6737C16.2335 13.3589 18.1347 14.1343 19.4734 16.0001C19.4747 16.0108 21.2285 14.9572 24.0003 14.9572C26.772 14.9572 27.7553 15.8154 28.5142 16.0001C29.2731 16.1848 29.88 12.7341 34.5668 13.6737C33.5883 15.5969 32.7689 18.0001 33.3943 18.9875C34.0198 19.9749 36.4745 23.1147 34.9666 27.5706C33.9614 30.5413 31.9853 32.3523 29.0384 33.0037C28.7005 33.1115 28.5315 33.2855 28.5315 33.5255C28.5315 33.8856 28.9884 33.9249 29.6465 35.6117C30.0853 36.7362 30.117 39.948 29.7416 45.247C28.7906 45.4891 28.0508 45.6516 27.5221 45.7347C26.5847 45.882 25.5669 45.9646 24.5669 45.9965C23.5669 46.0284 23.2196 46.0248 21.837 45.8961C20.9154 45.8103 20.0308 45.6688 19.1833 45.4716Z" fill="currentColor"></path></svg>`,
       data: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="7" ry="2.5"></ellipse><path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13"></path><path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"></path></svg>`,
       logout: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>`
     };
+  }
+});
+
+// src/app/version.js
+function normalizeRepositoryUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "").replace(/\.git$/i, "");
+}
+function normalizeVersionString(value) {
+  const normalized = String(value || "").trim().replace(/^v/i, "");
+  return VERSION_PATTERN.test(normalized) ? normalized : "";
+}
+function formatVersionLabel(value) {
+  const normalized = normalizeVersionString(value);
+  return normalized ? `V${normalized}` : "V--";
+}
+function compareVersions(left, right) {
+  const leftVersion = normalizeVersionString(left);
+  const rightVersion = normalizeVersionString(right);
+  if (!leftVersion || !rightVersion) return 0;
+  const leftParts = leftVersion.split(".").map((item) => Number(item));
+  const rightParts = rightVersion.split(".").map((item) => Number(item));
+  const size = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < size; index += 1) {
+    const leftPart = leftParts[index] || 0;
+    const rightPart = rightParts[index] || 0;
+    if (leftPart > rightPart) return 1;
+    if (leftPart < rightPart) return -1;
+  }
+  return 0;
+}
+function parseWorkerVersionFromSource(source = "") {
+  const text = String(source || "");
+  const markerMatch = text.match(/EMBY_MATE_VERSION[:=]\s*([0-9]+(?:\.[0-9]+){1,3})/i);
+  if (markerMatch) return normalizeVersionString(markerMatch[1]);
+  const constantMatch = text.match(/WORKER_VERSION(?:_MARKER)?\s*=\s*["'`][^"'`]*?([0-9]+(?:\.[0-9]+){1,3})["'`]/i);
+  if (constantMatch) return normalizeVersionString(constantMatch[1]);
+  const uiMatch = text.match(/版本\s*V([0-9]+(?:\.[0-9]+){1,3})/i);
+  if (uiMatch) return normalizeVersionString(uiMatch[1]);
+  return "";
+}
+function buildGitHubWorkerDistRawUrl(repositoryUrl = GITHUB_REPOSITORY_URL, branch = GITHUB_REPOSITORY_BRANCH, distPath = GITHUB_REPOSITORY_DIST_PATH) {
+  const normalizedRepositoryUrl = normalizeRepositoryUrl(repositoryUrl);
+  const match = normalizedRepositoryUrl.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)$/i);
+  if (!match) return "";
+  const owner = match[1];
+  const repo = match[2];
+  const normalizedBranch = String(branch || "").trim() || GITHUB_REPOSITORY_BRANCH;
+  const normalizedPath = String(distPath || "").trim().replace(/^\/+/, "");
+  if (!normalizedPath) return "";
+  return `https://raw.githubusercontent.com/${owner}/${repo}/${normalizedBranch}/${normalizedPath}`;
+}
+function normalizeVersionStatusRecord(record = {}) {
+  const currentVersion = normalizeVersionString(record.currentVersion) || WORKER_VERSION;
+  const remoteVersion = normalizeVersionString(record.remoteVersion);
+  const rawStatus = String(record.status || "").trim().toLowerCase();
+  const status = rawStatus === "update-available" || rawStatus === "equal" || rawStatus === "error" ? rawStatus : "unknown";
+  return {
+    currentVersion,
+    remoteVersion,
+    status,
+    checkedAt: String(record.checkedAt || "").trim(),
+    error: String(record.error || "").trim(),
+    repositoryUrl: normalizeRepositoryUrl(record.repositoryUrl) || GITHUB_REPOSITORY_URL,
+    repositoryBranch: String(record.repositoryBranch || "").trim() || GITHUB_REPOSITORY_BRANCH,
+    repositoryDistPath: String(record.repositoryDistPath || "").trim() || GITHUB_REPOSITORY_DIST_PATH,
+    workerVersionMarker: String(record.workerVersionMarker || WORKER_VERSION_MARKER).trim() || WORKER_VERSION_MARKER
+  };
+}
+var WORKER_VERSION, GITHUB_REPOSITORY_URL, GITHUB_REPOSITORY_BRANCH, GITHUB_REPOSITORY_DIST_PATH, WORKER_VERSION_MARKER, VERSION_STATUS_STORAGE_KEY, VERSION_PATTERN;
+var init_version = __esm({
+  "src/app/version.js"() {
+    WORKER_VERSION = "2.4.10";
+    GITHUB_REPOSITORY_URL = "https://github.com/irm123gard/Emby-Mate";
+    GITHUB_REPOSITORY_BRANCH = "main";
+    GITHUB_REPOSITORY_DIST_PATH = "dist/worker.js";
+    WORKER_VERSION_MARKER = `EMBY_MATE_VERSION=${WORKER_VERSION}`;
+    VERSION_STATUS_STORAGE_KEY = "sys:version-status";
+    VERSION_PATTERN = /^\d+(?:\.\d+){0,3}$/;
   }
 });
 
@@ -866,7 +951,7 @@ var init_constants = __esm({
     PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES = 1024 * 1024 * 64;
     PLAYBACK_OPTIMIZATION_MAX_BOUNDED_RANGE_BYTES = 1024 * 1024 * 4;
     RETRYABLE_ORIGIN_STATUSES = /* @__PURE__ */ new Set([500, 502, 503, 504, 522, 523, 524, 525, 526, 530]);
-    LOGIN_COMPAT_AUTH = 'Emby Client="Emby Mate", Device="Browser", DeviceId="proxy-login-patch", Version="2.4.9"';
+    LOGIN_COMPAT_AUTH = 'Emby Client="Emby Mate", Device="Browser", DeviceId="proxy-login-patch", Version="2.4.10"';
   }
 });
 
@@ -968,6 +1053,12 @@ function applyCustomRequestHeaders(headers, customHeaders = {}) {
   }
   return { customHeaderNames, customCookie };
 }
+function normalizeRealClientIpHeaderMode(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "strip") return "strip";
+  if (normalized === "disable" || normalized === "none") return "disable";
+  return "forward";
+}
 function buildUpstreamHeaders(request, requestState, targetBaseOrHost, options = {}) {
   const targetBase = resolveTargetBase(targetBaseOrHost);
   const targetHost = targetBase.host;
@@ -984,8 +1075,17 @@ function buildUpstreamHeaders(request, requestState, targetBaseOrHost, options =
   );
   headers.set("Host", targetHost);
   const clientIP = request.headers.get("cf-connecting-ip") || "unknown";
-  headers.set("X-Real-IP", clientIP);
-  headers.set("X-Forwarded-For", clientIP);
+  const realClientIpMode = normalizeRealClientIpHeaderMode(options.realClientIpMode);
+  if (realClientIpMode === "forward" || realClientIpMode === "strip") {
+    headers.set("X-Real-IP", clientIP);
+  } else {
+    headers.delete("X-Real-IP");
+  }
+  if (realClientIpMode === "forward") {
+    headers.set("X-Forwarded-For", clientIP);
+  } else {
+    headers.delete("X-Forwarded-For");
+  }
   headers.set("X-Forwarded-Host", requestState.requestHost);
   headers.set("X-Forwarded-Proto", new URL(request.url).protocol.replace(":", ""));
   if (requestState.isWsUpgrade === true) {
@@ -1280,7 +1380,8 @@ async function maybePrewarmMetadataResponse({
         requestState?.activeTargetBase || context?.primaryTarget?.targetBase,
         {
           forceH1: context?.forceH1 === true,
-          customHeaders: context?.nodeHeaders
+          customHeaders: context?.nodeHeaders,
+          realClientIpMode: context?.realClientIpMode
         }
       );
       headers.delete("Range");
@@ -1688,6 +1789,12 @@ function sanitizeHeaders(headers) {
   }
   return normalized;
 }
+function normalizeNodeRealClientIpMode(value = "") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "strip") return "strip";
+  if (normalized === "disable" || normalized === "none") return "disable";
+  return "forward";
+}
 function buildDefaultLineName(index) {
   return `线路${Number(index) + 1}`;
 }
@@ -1780,6 +1887,7 @@ function normalizeNodeRecord(node = {}) {
     remark: "",
     tag: "",
     redirectWhitelistEnabled: false,
+    realClientIpMode: "forward",
     direct: false,
     sourceDirect: false,
     directSource: false,
@@ -1803,6 +1911,7 @@ function normalizeNodeRecord(node = {}) {
     remark: String(source.remark || ""),
     tag: String(source.tag || ""),
     redirectWhitelistEnabled: source.redirectWhitelistEnabled === true,
+    realClientIpMode: normalizeNodeRealClientIpMode(source.realClientIpMode),
     direct: source.direct === true,
     sourceDirect: source.sourceDirect === true,
     directSource: source.directSource === true,
@@ -1822,6 +1931,7 @@ function createStoredNodeRecord(node = {}) {
     remark: normalized.remark,
     tag: normalized.tag,
     redirectWhitelistEnabled: normalized.redirectWhitelistEnabled,
+    realClientIpMode: normalized.realClientIpMode,
     direct: normalized.direct === true,
     sourceDirect: normalized.sourceDirect === true,
     directSource: normalized.directSource === true,
@@ -1903,6 +2013,8 @@ var init_node_model = __esm({
 function buildAdminInlineScript(ICONS) {
   return `<script>
 const ICONS=${JSON.stringify(ICONS)};
+const WORKER_VERSION=${JSON.stringify(WORKER_VERSION)};
+const GITHUB_REPOSITORY_URL=${JSON.stringify(GITHUB_REPOSITORY_URL)};
 const DEFAULT_TCPING_CONFIG=${JSON.stringify(DEFAULT_TCPING_CONFIG)};
 const DEFAULT_CF_METRICS_CONFIG=${JSON.stringify(DEFAULT_CF_METRICS_CONFIG)};
 const DEFAULT_SETTINGS_MODAL_CONFIG=${JSON.stringify(DEFAULT_SETTINGS_MODAL_CONFIG)};
@@ -1918,12 +2030,19 @@ const parseWangpanDirectTerms=${parseWangpanDirectTerms.toString()};
 const createSettingsDraftFromConfig=${createSettingsDraftFromConfig.toString()};
 const buildConfigFromSettingsDraft=${buildConfigFromSettingsDraft.toString()};
 const normalizePrewarmDepth=${normalizePrewarmDepth.toString()};
+const VERSION_PATTERN=/^\\d+(?:\\.\\d+){0,3}$/;
+const formatVersionLabel=${formatVersionLabel.toString()};
+const normalizeVersionString=${normalizeVersionString.toString()};
 const BLOCKED_HEADER_NAMES=new Set(${JSON.stringify(BLOCKED_HEADER_NAMES_LIST)});
 const sanitizeNodeHeaders=${sanitizeHeaders.toString()};
 const NODE_PATH_PHRASE_MAP=${JSON.stringify(NODE_PATH_PHRASE_MAP)};
 const NODE_PATH_PHRASE_ENTRIES=Object.entries(NODE_PATH_PHRASE_MAP).sort((left,right)=>right[0].length-left[0].length);
 const App={
-    nodes:[],tags:new Set(),tagCandidates:[],nodeNames:new Set(),nodePaths:new Set(),editing:null,editingActiveLineId:'',targetDraft:[],nodeHeadersEnabled:false,nodePathTouched:false,filterText:'',sortMode:'path',config:{theme:'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG),cfMetrics:{...DEFAULT_CF_METRICS_CONFIG}},settingsDraft:createSettingsDraftFromConfig({...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG)}),settingsAdvancedOpen:false,cfSettingsDraft:{...DEFAULT_CF_METRICS_CONFIG},proxyDialogNode:null,proxyMode:'custom',activeCardMenu:null,tcpingCache:{},_tcpingRequestsByTarget:{},_tcpingFreshWindowMs:3000,visibleTargets:{},refreshPromise:null,clientRttPromise:null,clientRtt:{loading:false,medianMs:null,error:'',updatedAt:''},_clientRttFreshWindowMs:60000,_filterTimeout:null,_lastFilterSignature:'',cfMetricsData:null,_cfMetricsFreshWindowMs:60000,nodeActivityData:null,nodeActivityRefreshingPath:'',cfAutoRefreshTimer:null,nodeActivityRefreshTimer:null,nodeActivityLoading:false,_nodeActivityFreshWindowMs:60000,_lastNodeActivitySignature:'',configManage:{includeAll:false},modalScrollLocked:false,modalScrollTop:0,cfDns:{loading:false,hostname:location.hostname||'',zoneName:'',exists:false,mode:'domain',modePinned:false,records:[],status:{kind:'idle',text:'未读取'},domainInput:'',ipInputs:[''],activeIpIndex:0,domainSupport:{checked:false,ipv4:null,ipv6:null,loading:false},domainHistory:[],ipHistory:[],lastError:'',lastMessage:'',lookupTimer:null,lookupSeq:0,fetchSeq:0},
+    nodes:[],tags:new Set(),tagCandidates:[],nodeNames:new Set(),nodePaths:new Set(),editing:null,editingActiveLineId:'',targetDraft:[],nodeHeadersEnabled:false,nodePathTouched:false,filterText:'',sortMode:'path',config:{theme:'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG),cfMetrics:{...DEFAULT_CF_METRICS_CONFIG}},settingsDraft:createSettingsDraftFromConfig({...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG)}),settingsAdvancedOpen:false,cfSettingsDraft:{...DEFAULT_CF_METRICS_CONFIG},proxyDialogNode:null,proxyMode:'custom',activeCardMenu:null,tcpingCache:{},_tcpingRequestsByTarget:{},_tcpingFreshWindowMs:3000,visibleTargets:{},refreshPromise:null,clientRttPromise:null,clientRtt:{loading:false,medianMs:null,error:'',updatedAt:''},_clientRttFreshWindowMs:60000,_filterTimeout:null,_lastFilterSignature:'',cfMetricsData:null,_cfMetricsFreshWindowMs:60000,nodeActivityData:null,nodeActivityRefreshingPath:'',cfAutoRefreshTimer:null,nodeActivityRefreshTimer:null,nodeActivityLoading:false,_nodeActivityFreshWindowMs:60000,_lastNodeActivitySignature:'',configManage:{includeAll:false},modalScrollLocked:false,modalScrollTop:0,versionStatus:{currentVersion:WORKER_VERSION,remoteVersion:'',status:'unknown',checkedAt:'',error:'',repositoryUrl:GITHUB_REPOSITORY_URL},cfDns:{loading:false,hostname:location.hostname||'',zoneName:'',exists:false,mode:'domain',modePinned:false,records:[],status:{kind:'idle',text:'未读取'},domainInput:'',ipInputs:[''],activeIpIndex:0,domainSupport:{checked:false,ipv4:null,ipv6:null,loading:false},domainHistory:[],ipHistory:[],lastError:'',lastMessage:'',lookupTimer:null,lookupSeq:0,fetchSeq:0},
+    normalizeVersionStatus(record={}){const currentVersion=normalizeVersionString(record.currentVersion)||WORKER_VERSION;const remoteVersion=normalizeVersionString(record.remoteVersion);const rawStatus=String(record.status||'').trim().toLowerCase();const status=rawStatus==='update-available'||rawStatus==='equal'||rawStatus==='error'?rawStatus:'unknown';return{currentVersion,remoteVersion,status,checkedAt:String(record.checkedAt||'').trim(),error:String(record.error||'').trim(),repositoryUrl:String(record.repositoryUrl||GITHUB_REPOSITORY_URL).trim()||GITHUB_REPOSITORY_URL};},
+    syncVersionMenu(){const button=document.getElementById('version-menu-btn');const text=document.getElementById('version-menu-text');if(!button||!text)return;const status=this.normalizeVersionStatus(this.versionStatus);this.versionStatus=status;button.title=status.status==='update-available'&&status.remoteVersion?('当前 '+formatVersionLabel(status.currentVersion)+'，仓库最新 '+formatVersionLabel(status.remoteVersion)):'点击查看 GitHub 仓库';text.textContent=status.status==='update-available'&&status.remoteVersion?('发布新版了：'+formatVersionLabel(status.remoteVersion)):('版本 '+formatVersionLabel(status.currentVersion));},
+    openRepositoryHome(event){event?.preventDefault?.();event?.stopPropagation?.();document.getElementById('main-menu')?.classList.remove('show');window.open((this.versionStatus&&this.versionStatus.repositoryUrl)||GITHUB_REPOSITORY_URL,'_blank','noopener');},
+    async loadVersionStatus(force=false){const currentStatus=this.normalizeVersionStatus(this.versionStatus);if(!force&&currentStatus.checkedAt&&currentStatus.status!=='error')return currentStatus;try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'versionStatus'})});const data=await res.json();if(!res.ok)throw new Error(data.error||'版本信息加载失败');this.versionStatus=this.normalizeVersionStatus(data);}catch(_){this.versionStatus=currentStatus;}this.syncVersionMenu();return this.versionStatus;},
     escapeHtml(str){if(str==null)return'';const map={'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'};return String(str).replace(/[&<>"']/g,m=>map[m]);},
     quoteJs(str){return JSON.stringify(String(str==null?'':str));},
     normalizeTarget(value){const raw=String(value||'').trim();if(!raw)return'';try{const url=new URL(raw);if(url.protocol!=='http:'&&url.protocol!=='https:')return'';let normalized=raw;while(normalized.endsWith('/'))normalized=normalized.slice(0,-1);return normalized;}catch(_){return'';}},
@@ -1961,9 +2080,10 @@ const App={
         }
         this.setNodePathTouched(true);
     },
+    normalizeRealClientIpMode(value){const normalized=String(value||'').trim().toLowerCase();if(normalized==='strip')return'strip';if(normalized==='disable'||normalized==='none')return'disable';return'forward';},
     normalizeLineDraftEntry(item,index=0){const line=item&&typeof item==='object'&&!Array.isArray(item)?item:{target:item};return{id:String(line?.id||('line-'+(index+1))),name:String(line?.name||''),target:String(line?.target??line?.url??'')};},
     createEmptyLineDraft(index=0){return this.normalizeLineDraftEntry({id:'line-'+(index+1),name:'',target:''},index);},
-    normalizeNode(node){const restNode={...(node&&typeof node==='object'&&!Array.isArray(node)?node:{})};delete restNode.secret;const rawLines=Array.isArray(restNode?.lines)&&restNode.lines.length?restNode.lines:[];const normalizedLines=(rawLines.length?rawLines.map((line,index)=>this.normalizeLineDraftEntry(line,index)):this.normalizeTargetList(restNode?.targets,restNode?.target).map((target,index)=>this.normalizeLineDraftEntry({target,name:''},index))).map((line,index)=>({id:String(line.id||('line-'+(index+1))),name:String(line.name||'').trim(),target:this.normalizeTarget(line.target)})).filter(line=>line.target);const targets=normalizedLines.length?normalizedLines.map(line=>line.target):this.normalizeTargetList(restNode?.targets,restNode?.target);const activeLineId=String(restNode?.activeLineId||'').trim();const normalizedPath=this.normalizeNodePathValue(String(node?.path||node?.name||''));return{...restNode,name:String(restNode?.name||'').trim(),path:String(node?.path||node?.name||'')?normalizedPath:'',target:targets[0]||'',targets,lines:normalizedLines,activeLineId:normalizedLines.some(line=>line.id===activeLineId)?activeLineId:(normalizedLines[0]?.id||''),headers:sanitizeNodeHeaders(node?.headers),remark:String(restNode?.remark||''),tag:String(restNode?.tag||''),redirectWhitelistEnabled:restNode?.redirectWhitelistEnabled===true};},
+    normalizeNode(node){const restNode={...(node&&typeof node==='object'&&!Array.isArray(node)?node:{})};delete restNode.secret;const rawLines=Array.isArray(restNode?.lines)&&restNode.lines.length?restNode.lines:[];const normalizedLines=(rawLines.length?rawLines.map((line,index)=>this.normalizeLineDraftEntry(line,index)):this.normalizeTargetList(restNode?.targets,restNode?.target).map((target,index)=>this.normalizeLineDraftEntry({target,name:''},index))).map((line,index)=>({id:String(line.id||('line-'+(index+1))),name:String(line.name||'').trim(),target:this.normalizeTarget(line.target)})).filter(line=>line.target);const targets=normalizedLines.length?normalizedLines.map(line=>line.target):this.normalizeTargetList(restNode?.targets,restNode?.target);const activeLineId=String(restNode?.activeLineId||'').trim();const normalizedPath=this.normalizeNodePathValue(String(node?.path||node?.name||''));return{...restNode,name:String(restNode?.name||'').trim(),path:String(node?.path||node?.name||'')?normalizedPath:'',target:targets[0]||'',targets,lines:normalizedLines,activeLineId:normalizedLines.some(line=>line.id===activeLineId)?activeLineId:(normalizedLines[0]?.id||''),headers:sanitizeNodeHeaders(node?.headers),remark:String(restNode?.remark||''),tag:String(restNode?.tag||''),redirectWhitelistEnabled:restNode?.redirectWhitelistEnabled===true,realClientIpMode:this.normalizeRealClientIpMode(restNode?.realClientIpMode)};},
     getNodeTargets(node){return this.normalizeTargetList(node?.targets,node?.target);},
     getPrimaryTarget(node){return this.getNodeTargets(node)[0]||'';},
     setTargetDraft(list){const source=Array.isArray(list)&&list.length?list:[list];const next=source.map((item,index)=>this.normalizeLineDraftEntry(item,index));this.targetDraft=next.length?next:[this.createEmptyLineDraft(0)];this.renderTargetDraft();},
@@ -1987,7 +2107,7 @@ const App={
     readPreferredHistory(type){try{const raw=localStorage.getItem(this.getPreferredHistoryKey(type));const parsed=JSON.parse(raw||'[]');if(!Array.isArray(parsed))return[];return parsed.map(item=>String(item||'').trim()).filter(Boolean).slice(0,4);}catch(_){return[];}},
     writePreferredHistory(type,list){try{localStorage.setItem(this.getPreferredHistoryKey(type),JSON.stringify((Array.isArray(list)?list:[]).slice(0,4)));}catch(_){}},
     pushPreferredHistory(type,values){const incoming=(Array.isArray(values)?values:[values]).map(item=>String(item||'').trim()).filter(Boolean);if(!incoming.length)return;const next=[];for(const item of [...incoming,...this.readPreferredHistory(type)]){if(next.includes(item))continue;next.push(item);if(next.length>=4)break;}this.writePreferredHistory(type,next);if(type==='ip')this.cfDns.ipHistory=next;else this.cfDns.domainHistory=next;},
-    async init(){const listPromise=this.requestNodeList();await this.loadConfig();this.cfDns=this.createDefaultCfDnsState();this.setTheme(this.config.theme||localStorage.getItem('theme')||'auto');this.updateClientRttPill();try{this.applyNodeListPayload(await listPromise,true);this.scheduleInitialCfMetricsLoad();}catch(e){this.toast('加载失败: '+e.message,'error');}this.loadClientRtt(true).catch(()=>{});this.updateSearchState();this.syncSortMenu();this.initPullToRefresh();this.syncCfAutoRefresh();this.syncNodeActivityAutoRefresh();document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrapper'))document.getElementById('main-menu').classList.remove('show');if(!e.target.closest('.tag-wrapper'))document.getElementById('tag-list').classList.remove('show');if(!e.target.closest('.settings-depth-picker'))document.getElementById('settings-prewarm-depth-menu')?.classList.remove('show');if(!e.target.closest('.card-more'))this.closeCardMenus();});document.addEventListener('keydown',e=>this.handleGlobalKeydown(e));},
+    async init(){const listPromise=this.requestNodeList();this.syncVersionMenu();await this.loadConfig();this.cfDns=this.createDefaultCfDnsState();this.setTheme(this.config.theme||localStorage.getItem('theme')||'auto');this.updateClientRttPill();try{this.applyNodeListPayload(await listPromise,true);this.scheduleInitialCfMetricsLoad();}catch(e){this.toast('加载失败: '+e.message,'error');}this.loadClientRtt(true).catch(()=>{});this.loadVersionStatus(false).catch(()=>{});this.updateSearchState();this.syncSortMenu();this.initPullToRefresh();this.syncCfAutoRefresh();this.syncNodeActivityAutoRefresh();document.addEventListener('click',e=>{if(!e.target.closest('.menu-wrapper'))document.getElementById('main-menu').classList.remove('show');if(!e.target.closest('.tag-wrapper'))document.getElementById('tag-list').classList.remove('show');if(!e.target.closest('.settings-depth-picker'))document.getElementById('settings-prewarm-depth-menu')?.classList.remove('show');if(!e.target.closest('.card-more'))this.closeCardMenus();});document.addEventListener('keydown',e=>this.handleGlobalKeydown(e));},
     async loadConfig(){try{const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'loadConfig'})});const data=await res.json();const explicitRedirectEntries=normalizeSharedRedirectRuleEntries(Array.isArray(data.redirectWhitelistEntries)&&data.redirectWhitelistEntries.length?data.redirectWhitelistEntries:data.redirectWhitelistDomains,MAX_SHARED_REDIRECT_RULES);const explicitRedirectDomains=Array.from(new Set(explicitRedirectEntries.map(item=>normalizeRedirectRuleHost(item?.domain)).filter(domain=>isHostLikeRedirectRule(domain))));const baseConfig={theme:data.theme||'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,thirdPartyProxies:Array.isArray(data.thirdPartyProxies)?data.thirdPartyProxies:[],redirectWhitelistEntries:explicitRedirectEntries,redirectWhitelistDomains:explicitRedirectDomains,tcping:cloneTcpingConfig(data.tcping||{}),enableH2:data.enableH2===true,enableH3:data.enableH3===true,peakDowngrade:data.peakDowngrade!==false,protocolFallback:data.protocolFallback!==false,enablePrewarm:data.enablePrewarm!==false,prewarmDepth:data.prewarmDepth,prewarmCacheTtl:data.prewarmCacheTtl,directStaticAssets:data.directStaticAssets!==false,directHlsDash:data.directHlsDash!==false,sourceSameOriginProxy:data.sourceSameOriginProxy!==false,forceExternalProxy:data.forceExternalProxy!==false,debugProxyHeaders:data.debugProxyHeaders===true,upstreamTimeoutMs:data.upstreamTimeoutMs,upstreamRetryAttempts:data.upstreamRetryAttempts,cfMetrics:{...DEFAULT_CF_METRICS_CONFIG,...(data.cfMetrics||{})}};this.settingsDraft=createSettingsDraftFromConfig(baseConfig);this.config=buildConfigFromSettingsDraft(baseConfig,this.settingsDraft);this.config.theme=baseConfig.theme;this.config.cfMetrics=baseConfig.cfMetrics;this.cfSettingsDraft={...this.config.cfMetrics};}catch(_){const fallbackConfig={theme:'auto',...DEFAULT_SETTINGS_MODAL_CONFIG,redirectWhitelistEntries:[],redirectWhitelistDomains:[],tcping:cloneTcpingConfig(DEFAULT_TCPING_CONFIG),cfMetrics:{...DEFAULT_CF_METRICS_CONFIG}};this.settingsDraft=createSettingsDraftFromConfig(fallbackConfig);this.config=buildConfigFromSettingsDraft(fallbackConfig,this.settingsDraft);this.config.theme=fallbackConfig.theme;this.config.cfMetrics=fallbackConfig.cfMetrics;this.cfSettingsDraft={...this.config.cfMetrics};}},
     async requestNodeList(){const res=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'list'})});if(res.status===401){location.reload();throw new Error('未登录');}const data=await res.json().catch(()=>({}));if(!res.ok||data.error)throw new Error(data.error||'加载节点列表失败');return data;},
     applyNodeListPayload(data,silent=false){const nextActivityMap=(data&&typeof data.nodeActivity==='object')?data.nodeActivity:{};const nextAvailable=data.nodeActivityAvailable===true;this.nodes=(data.nodes||[]).map(n=>this.normalizeNode(n));this.updateTags();this._lastNodeActivitySignature=this.getNodeActivitySignature(nextActivityMap);this.nodeActivityData={nodeActivityAvailable:nextAvailable,nodeActivity:nextActivityMap,generatedAt:data.generatedAt||''};if(!this.hasCfMetricsConfig()||(this.config.cfMetrics||{}).showCard===false){this.cancelInitialCfMetricsLoad();this.cfMetricsData=null;}this.renderList();this.renderCfCardSlot();if(!silent)this.toast('列表已更新');},
@@ -2080,25 +2200,30 @@ const App={
     syncRenderedNodeCards(container,filtered){
         const visiblePaths=new Set(filtered.map(node=>String(node?.path||'')).filter(Boolean));
         Array.from(container.querySelectorAll('.card[data-card-path]')).forEach(card=>{if(!visiblePaths.has(String(card.dataset.cardPath||'')))card.remove();});
+        const resolveReferenceNode=node=>{if(!node)return null;const children=Array.from(container?.children||container?.childNodes||[]);return children.includes(node)?node:null;};
         let cursor=container.firstElementChild;
         filtered.forEach(node=>{
             const path=String(node?.path||'');
             if(!path)return;
             const signature=this.getNodeCardRenderSignature(node);
+            let referenceNode=resolveReferenceNode(cursor);
             let element=document.getElementById(this.makeCardDomId(path));
             if(!element){
                 element=this.createNodeCardElement(node,signature);
                 if(!element)return;
-                container.insertBefore(element,cursor);
+                container.insertBefore(element,referenceNode);
             }else if(element.dataset.renderSignature!==signature){
+                const previousElement=element;
                 const next=this.createNodeCardElement(node,signature);
                 if(next){
                     element.replaceWith(next);
                     element=next;
+                    if(cursor===previousElement)cursor=element;
+                    referenceNode=resolveReferenceNode(cursor);
                 }
             }
-            if(element&&element!==cursor)container.insertBefore(element,cursor);
-            cursor=element?element.nextElementSibling:cursor;
+            if(element&&element!==referenceNode)container.insertBefore(element,referenceNode);
+            cursor=element?element.nextElementSibling:referenceNode;
         });
         while(cursor){
             const next=cursor.nextElementSibling;
@@ -2201,7 +2326,7 @@ const App={
     buildConfigExportPayload(includeAll=false){const nodes=(Array.isArray(this.nodes)?this.nodes:[]).map(item=>this.normalizeNode(item));if(!includeAll)return nodes;return{type:'emby-mate-all-config',exportedAt:new Date().toISOString(),nodes,config:JSON.parse(JSON.stringify(this.config||{}))};},
     async exportConfigBundle(){const includeAll=this.configManage.includeAll===true;const blob=new Blob([JSON.stringify(this.buildConfigExportPayload(includeAll),null,2)],{type:'application/json'});const link=document.createElement('a');const objectUrl=URL.createObjectURL(blob);link.href=objectUrl;link.download=this.getConfigExportFilename(includeAll);link.click();setTimeout(()=>URL.revokeObjectURL(objectUrl),0);this.closeConfigManageModal();},
     triggerConfigImport(){document.getElementById('file-in')?.click();},
-    normalizeImportedNodes(list){return(Array.isArray(list)?list:[]).map(item=>this.normalizeNode({name:String(item?.name||'').trim(),path:String(item?.path||item?.secret||item?.name||'').trim(),targets:item?.targets,target:item?.target,lines:item?.lines,activeLineId:item?.activeLineId,headers:item?.headers,remark:String(item?.remark||'').trim(),tag:String(item?.tag||'').trim(),redirectWhitelistEnabled:item?.redirectWhitelistEnabled===true})).filter(item=>item.name&&item.path&&item.target);},
+    normalizeImportedNodes(list){return(Array.isArray(list)?list:[]).map(item=>this.normalizeNode({name:String(item?.name||'').trim(),path:String(item?.path||item?.secret||item?.name||'').trim(),targets:item?.targets,target:item?.target,lines:item?.lines,activeLineId:item?.activeLineId,headers:item?.headers,remark:String(item?.remark||'').trim(),tag:String(item?.tag||'').trim(),redirectWhitelistEnabled:item?.redirectWhitelistEnabled===true,realClientIpMode:item?.realClientIpMode})).filter(item=>item.name&&item.path&&item.target);},
     parseImportedPayload(raw){if(Array.isArray(raw))return{nodes:this.normalizeImportedNodes(raw),config:null};if(raw&&typeof raw==='object')return{nodes:this.normalizeImportedNodes(raw.nodes),config:raw.config&&typeof raw.config==='object'&&!Array.isArray(raw.config)?raw.config:null};throw new Error('配置文件格式错误');},
     toggleTheme(){const current=document.documentElement.className==='dark'?'dark':'light';this.setTheme(current==='dark'?'light':'dark');},
     syncThemeButtons(finalTheme){const themeIcon=finalTheme==='dark'?ICONS.sun:ICONS.moon;const btn=document.getElementById('theme-btn');if(btn)btn.innerHTML=themeIcon;const menuBtn=document.getElementById('theme-menu-btn');if(menuBtn)menuBtn.innerHTML=themeIcon+' 主题切换';},
@@ -2219,16 +2344,17 @@ const App={
     syncSettingsAdvancedToggle(){const button=document.getElementById('settings-advanced-toggle');const sections=document.getElementById('settings-advanced-sections');if(!button||!sections)return;button.classList.toggle('open',this.settingsAdvancedOpen===true);button.setAttribute('aria-expanded',this.settingsAdvancedOpen===true?'true':'false');sections.classList.toggle('hidden',this.settingsAdvancedOpen!==true);if(this.settingsAdvancedOpen!==true)document.getElementById('settings-prewarm-depth-menu')?.classList.remove('show');},
     toggleSettingsAdvanced(event){event?.preventDefault?.();event?.stopPropagation?.();this.settingsAdvancedOpen=this.settingsAdvancedOpen!==true;this.syncSettingsAdvancedToggle();},
     setRedirectWhitelistEnabled(enabled){const on=!!enabled;document.getElementById('in-redirect-whitelist-enabled').value=on?'1':'0';const sw=document.getElementById('in-redirect-whitelist-switch');const text=document.getElementById('in-redirect-whitelist-text');sw?.classList.toggle('on',on);sw?.setAttribute('aria-pressed',on?'true':'false');if(text){text.textContent=on?'开启':'关闭';text.classList.toggle('on',on);text.classList.toggle('off',!on);}},
+    setRealClientIpMode(mode,event){event?.preventDefault?.();event?.stopPropagation?.();const normalized=this.normalizeRealClientIpMode(mode);const input=document.getElementById('in-real-client-ip-mode');const list=document.getElementById('real-client-ip-mode-list');if(input)input.value=normalized;list?.querySelectorAll?.('button[data-real-client-ip-mode]')?.forEach?.(button=>{const active=button.getAttribute('data-real-client-ip-mode')===normalized;button.classList.toggle('active',active);button.setAttribute('aria-pressed',active?'true':'false');});},
     setSettingsSwitch(switchId,textId,enabled){const on=enabled===true;const sw=document.getElementById(switchId);const text=document.getElementById(textId);sw?.classList.toggle('on',on);sw?.setAttribute('aria-pressed',on?'true':'false');if(text){text.textContent=on?'开启':'关闭';text.classList.toggle('on',on);text.classList.toggle('off',!on);}},
     syncModalScrollLock(){const openMaskIds=['modal-mask','proxy-mask','settings-mask','cf-settings-mask','config-manage-mask'];const shouldLock=openMaskIds.some(id=>document.getElementById(id)?.style.display==='flex');if(shouldLock&&!this.modalScrollLocked){this.modalScrollTop=window.scrollY||window.pageYOffset||0;this.modalScrollLocked=true;document.documentElement.style.overflow='hidden';document.body.style.overflow='hidden';document.body.style.position='fixed';document.body.style.top='-'+this.modalScrollTop+'px';document.body.style.left='0';document.body.style.right='0';document.body.style.width='100%';}else if(!shouldLock&&this.modalScrollLocked){const scrollTop=this.modalScrollTop||0;this.modalScrollLocked=false;document.documentElement.style.overflow='';document.body.style.overflow='';document.body.style.position='';document.body.style.top='';document.body.style.left='';document.body.style.right='';document.body.style.width='';window.scrollTo(0,scrollTop);}},
     resetModalScrollPositions(maskId,modalId){const mask=document.getElementById(maskId);const modal=document.getElementById(modalId);if(mask)mask.scrollTop=0;if(modal){modal.scrollTop=0;modal.querySelectorAll?.('.modal-content').forEach?.(node=>{node.scrollTop=0;});}},
     getOpenModalCloseAction(){const modalActions=[['config-manage-mask',()=>this.closeConfigManageModal()],['cf-settings-mask',()=>this.closeCfSettingsModal()],['settings-mask',()=>this.closeSettingsModal()],['proxy-mask',()=>this.closeProxyDialog()],['modal-mask',()=>this.closeModal()]];for(const [maskId,close] of modalActions){if(document.getElementById(maskId)?.style.display==='flex')return close;}return null;},
     handleGlobalKeydown(event){if(event.key!=='Escape')return;const closeAction=this.getOpenModalCloseAction();if(!closeAction)return;event.preventDefault();closeAction();},
     /* openModal(nodePath=null){document.getElementById('in-path').value=node?.path||'';} */
-    openModal(nodeName=null){const nodePath=nodeName;const found=nodePath?this.nodes.find(item=>item.path===nodePath):null;const node=found?this.normalizeNode(found):null;this.editing=node?node.path:null;this.editingActiveLineId=node?.activeLineId||'';this.setNodePathTouched(!!node);document.getElementById('modal-title').innerText=node?'编辑站点':'新建站点';document.getElementById('in-name').value=node?.name||'';document.getElementById('in-path').value=node?.path||'';document.getElementById('in-remark').value=node?.remark||'';document.getElementById('in-tag').value=node?.tag||'';this.setTargetDraft(node?.lines?.length?node.lines:(node?.targets||['']));this.setRedirectWhitelistEnabled(node?.redirectWhitelistEnabled===true);this.setNodeHeaderDraft(node?.headers);this.setNodeHeadersEnabled(Object.keys(node?.headers||{}).length>0);document.getElementById('modal-mask').style.display='flex';this.resetModalScrollPositions('modal-mask','modal');this.syncModalScrollLock();setTimeout(()=>document.getElementById('modal').classList.add('show'),10);},
+    openModal(nodeName=null){const nodePath=nodeName;const found=nodePath?this.nodes.find(item=>item.path===nodePath):null;const node=found?this.normalizeNode(found):null;this.editing=node?node.path:null;this.editingActiveLineId=node?.activeLineId||'';this.setNodePathTouched(!!node);document.getElementById('modal-title').innerText=node?'编辑站点':'新建站点';document.getElementById('in-name').value=node?.name||'';document.getElementById('in-path').value=node?.path||'';document.getElementById('in-remark').value=node?.remark||'';document.getElementById('in-tag').value=node?.tag||'';this.setTargetDraft(node?.lines?.length?node.lines:(node?.targets||['']));this.setRedirectWhitelistEnabled(node?.redirectWhitelistEnabled===true);this.setNodeHeaderDraft(node?.headers);this.setNodeHeadersEnabled(Object.keys(node?.headers||{}).length>0);this.setRealClientIpMode(node?.realClientIpMode||'forward');document.getElementById('modal-mask').style.display='flex';this.resetModalScrollPositions('modal-mask','modal');this.syncModalScrollLock();setTimeout(()=>document.getElementById('modal').classList.add('show'),10);},
     editNode(path){this.closeCardMenus();this.openModal(path);},
     closeModal(){document.getElementById('modal').classList.remove('show');setTimeout(()=>{document.getElementById('modal-mask').style.display='none';this.syncModalScrollLock();},180);},
-    async saveNode(){const name=document.getElementById('in-name').value.trim();const path=document.getElementById('in-path').value.trim();const normalizedPath=this.normalizeNodePathValue(path);document.getElementById('in-path').value=normalizedPath;const remark=document.getElementById('in-remark').value.trim();const tag=document.getElementById('in-tag').value.trim();const rawLines=this.getDraftTargetEntries();const rawTargets=rawLines.map(item=>item.target);const invalidTarget=rawTargets.find(item=>String(item||'').trim()&&!this.normalizeTarget(item));const targets=this.normalizeTargetList(rawTargets);const headerPairs=this.collectNodeHeaderEntries();const redirectWhitelistEnabled=document.getElementById('in-redirect-whitelist-enabled').value==='1';if(!name||!normalizedPath||!targets.length)return this.toast('请填写必填项','error');if(invalidTarget)return this.toast('目标地址格式错误，必须以 http:// 或 https:// 开头','error');if((!this.editing||this.editing!==normalizedPath)&&this.nodePaths.has(path))return this.toast('已存在相同路径的节点','error');if(path!==normalizedPath&&(!this.editing||this.editing!==normalizedPath)&&this.nodePaths.has(normalizedPath))return this.toast('已存在相同路径的节点','error');const newNode=this.normalizeNode({name,path:normalizedPath,remark,tag,target:targets[0],targets,lines:rawLines,activeLineId:this.editingActiveLineId,headers:headerPairs,redirectWhitelistEnabled});const oldNodes=[...this.nodes];try{if(this.editing&&this.editing!==normalizedPath)this.nodes=this.nodes.filter(n=>n.path!==this.editing);const idx=this.nodes.findIndex(n=>n.path===normalizedPath);if(idx>-1)this.nodes[idx]=newNode;else this.nodes.push(newNode);this.nodes=this.nodes.map(node=>this.normalizeNode(node));this.updateTags();this.renderList();this.closeModal();const response=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'save',editing:this.editing,...newNode})});if(!response.ok){const error=await response.json();throw new Error(error.error||'保存失败');}this.toast('保存成功');}catch(e){this.nodes=oldNodes;this.updateTags();this.renderList();this.toast(e.message||'保存失败','error');}},
+    async saveNode(){const oldNodes=[...this.nodes];const editingPath=this.editing;try{const name=document.getElementById('in-name').value.trim();const path=document.getElementById('in-path').value.trim();const normalizedPath=this.normalizeNodePathValue(path);document.getElementById('in-path').value=normalizedPath;const remark=document.getElementById('in-remark').value.trim();const tag=document.getElementById('in-tag').value.trim();const rawLines=this.getDraftTargetEntries().map((item,index)=>this.normalizeLineDraftEntry(item,index));const rawTargets=rawLines.map(item=>item.target);const invalidTarget=rawTargets.find(item=>String(item||'').trim()&&!this.normalizeTarget(item));const targets=this.normalizeTargetList(rawTargets);const headerPairs=this.collectNodeHeaderEntries();const redirectWhitelistEnabled=document.getElementById('in-redirect-whitelist-enabled').value==='1';const realClientIpMode=this.normalizeRealClientIpMode(document.getElementById('in-real-client-ip-mode').value);if(!name||!normalizedPath||!targets.length)return this.toast('请填写必填项','error');if(invalidTarget)return this.toast('目标地址格式错误，必须以 http:// 或 https:// 开头','error');if((!editingPath||editingPath!==normalizedPath)&&this.nodePaths.has(path))return this.toast('已存在相同路径的节点','error');if(path!==normalizedPath&&(!editingPath||editingPath!==normalizedPath)&&this.nodePaths.has(normalizedPath))return this.toast('已存在相同路径的节点','error');const nextActiveLineId=String(rawLines.find(item=>this.normalizeTarget(item.target))?.id||this.editingActiveLineId||'').trim();const newNode=this.normalizeNode({name,path:normalizedPath,remark,tag,target:targets[0],targets,lines:rawLines,activeLineId:nextActiveLineId,headers:headerPairs,redirectWhitelistEnabled,realClientIpMode});const response=await fetch('/admin',{method:'POST',body:JSON.stringify({action:'save',editing:editingPath,...newNode})});if(!response.ok){const error=await response.json();throw new Error(error.error||'保存失败');}if(editingPath&&editingPath!==normalizedPath)this.nodes=this.nodes.filter(n=>n.path!==editingPath);const idx=this.nodes.findIndex(n=>n.path===normalizedPath);if(idx>-1)this.nodes[idx]=newNode;else this.nodes.push(newNode);this.nodes=this.nodes.map(node=>this.normalizeNode(node));this.updateTags();try{this.renderList();}catch(renderError){console.error('saveNode renderList failed',renderError);this.refresh(true).catch(()=>{});}this.closeModal();this.toast('保存成功');}catch(e){this.nodes=oldNodes;this.updateTags();try{this.renderList();}catch(renderError){console.error('saveNode rollback renderList failed',renderError);}this.toast(e.message||'保存失败','error');}},
     toggleVis(path){this.visibleTargets[path]=!this.visibleTargets[path];this.updateNodeCard(path);},
     closeCardMenus(){const prev=this.activeCardMenu;this.activeCardMenu=null;if(prev)this.updateNodeCard(prev);},
     toggleCardMenu(path){const prev=this.activeCardMenu;const next=this.activeCardMenu===path?null:path;this.activeCardMenu=next;if(prev&&prev!==next)this.updateNodeCard(prev);if(next)this.updateNodeCard(next);},
@@ -2454,6 +2580,7 @@ App.init();
 var init_admin_script = __esm({
   "src/admin/ui/admin-script.js"() {
     init_defaults();
+    init_version();
     init_node_path_phrase_map();
     init_settings_model();
     init_metadata_prewarm();
@@ -2757,6 +2884,7 @@ var init_admin_styles = __esm({
     .whitelist-switch-text.on{color:var(--adm-switch-text-active);font-weight:600}
     .proxy-grid{display:grid;gap:12px}
     .proxy-mode-tabs{display:flex;flex-wrap:nowrap;gap:0;border-radius:10px;overflow-x:auto;overflow-y:hidden;background:var(--adm-pill-muted-bg);border:1px solid var(--adm-border-soft);white-space:nowrap}
+    .proxy-mode-tabs.proxy-mode-tabs-fit{display:inline-flex;width:fit-content;max-width:100%;align-self:flex-start}
     .proxy-mode-tabs button{height:40px;min-width:76px;border:none;background:transparent;color:var(--adm-text-main);cursor:pointer;flex:0 0 auto}
     .proxy-mode-tabs button.active{background:var(--adm-btn-primary-bg);color:var(--adm-btn-primary-text)}
     .proxy-line{display:grid;grid-template-columns:72px 1fr auto;gap:10px;align-items:center;padding:12px}
@@ -2942,6 +3070,7 @@ var init_admin_styles = __esm({
         .recent-usage-text{font-size:11px;white-space:normal}
         .tcping-panel{grid-template-columns:1fr 1fr;row-gap:12px}
         .proxy-mode-tabs{width:100%}
+        .proxy-mode-tabs.proxy-mode-tabs-fit{width:fit-content;max-width:100%}
         .settings-ip-row{align-items:stretch}
         .preferred-dns-input-row{flex-wrap:wrap}
         .preferred-dns-actions{flex-wrap:wrap}
@@ -2999,6 +3128,7 @@ function renderSettingsNumberRow({ label, inputId, min, max, onInput, unit, note
                         </div>`;
 }
 function renderDashboardShell(ICONS) {
+  const versionLabel = formatVersionLabel(WORKER_VERSION);
   return `
 <div class="pull-indicator" id="pull-indicator"><div class="pull-spinner">${ICONS.refresh}</div><span id="pull-text">下拉刷新...</span></div>
 <div class="container">
@@ -3035,6 +3165,7 @@ function renderDashboardShell(ICONS) {
                     <button class="popover-item" onclick="App.openSettingsModal()">${ICONS.settings} 设置</button>
                     <button class="popover-item" onclick="App.openCfSettingsModal()">${ICONS.web} CF设置</button>
                     <button class="popover-item" onclick="App.openConfigManageModal()">${ICONS.data} 配置管理</button>
+                    <button id="version-menu-btn" class="popover-item" type="button" onclick="App.openRepositoryHome(event)">${ICONS.github} <span id="version-menu-text">版本 ${versionLabel}</span></button>
                     <div style="height:1px;background:var(--border);margin:4px 0"></div>
                     <button class="popover-item" onclick="App.logout()" style="color:var(--danger)">${ICONS.logout} 退出登录</button>
                 </div>
@@ -3104,6 +3235,16 @@ function renderNodeAdvancedSection() {
                         </div>
                     </div>
                     <p class="section-desc">支持覆盖或新增上游请求头，仅对当前站点的回源请求生效。自动忽略Host、X-Forwarded-*、Connection、Upgrade等禁止项。</p>
+                </div>
+                <div class="form-group">
+                    <label>真实客户端 IP 透传</label>
+                    <input id="in-real-client-ip-mode" type="hidden" value="forward">
+                    <div id="real-client-ip-mode-list" class="proxy-mode-tabs proxy-mode-tabs-fit">
+                        <button type="button" data-real-client-ip-mode="forward" onclick="App.setRealClientIpMode('forward', event)">默认透传</button>
+                        <button type="button" data-real-client-ip-mode="strip" onclick="App.setRealClientIpMode('strip', event)">仅X-Real-IP</button>
+                        <button type="button" data-real-client-ip-mode="disable" onclick="App.setRealClientIpMode('disable', event)">关闭透传</button>
+                    </div>
+                    <p class="section-desc">默认透传会同时补写 <code>X-Real-IP</code> 和 <code>X-Forwarded-For</code>；仅X-Real-IP 只保留 <code>X-Real-IP</code>；关闭透传会强制不回传这两个请求头。</p>
                 </div>
             </section>`;
 }
@@ -3548,6 +3689,7 @@ function renderAdminMarkup(ICONS) {
 }
 var init_admin_template = __esm({
   "src/admin/ui/admin-template.js"() {
+    init_version();
   }
 });
 
@@ -6400,6 +6542,21 @@ var CFAnalytics = {
   }
 };
 
+// src/storage/version-status-repository.js
+init_auth();
+init_version();
+async function readStoredVersionStatus(env) {
+  const kv = Auth.getKV(env);
+  const record = await kv?.get(VERSION_STATUS_STORAGE_KEY, { type: "json" });
+  return normalizeVersionStatusRecord(record || {});
+}
+async function writeStoredVersionStatus(env, record = {}) {
+  const normalizedRecord = normalizeVersionStatusRecord(record);
+  const kv = Auth.getKV(env);
+  await kv?.put(VERSION_STATUS_STORAGE_KEY, JSON.stringify(normalizedRecord));
+  return normalizedRecord;
+}
+
 // src/proxy/media/response-size.js
 function getResponseContentLength(headers) {
   const raw = headers.get("Content-Length");
@@ -7270,6 +7427,7 @@ async function prepareNodeContext(globals, node, nodePath, legacyKeyOrRuntimeCon
     String(node?.activeLineId || "").trim(),
     safePath,
     node?.redirectWhitelistEnabled === true ? "1" : "0",
+    normalizeNodeRealClientIpMode(node?.realClientIpMode),
     JSON.stringify(Object.entries(nodeHeaders).sort(([a], [b]) => String(a).localeCompare(String(b))))
   ].join("|");
   const now = Date.now();
@@ -7311,6 +7469,7 @@ async function prepareNodeContext(globals, node, nodePath, legacyKeyOrRuntimeCon
     targetBasePath: primaryTarget.targetBasePath,
     proxyPrefix: `/${safePath}`,
     redirectWhitelistEnabled: node?.redirectWhitelistEnabled === true,
+    realClientIpMode: normalizeNodeRealClientIpMode(node?.realClientIpMode),
     learnedBasePaths: getCachedBasePathState(globals, safePath)
   };
   globals.NodeContextCache.set(safePath, {
@@ -7461,6 +7620,305 @@ init_runtime_cache_cleanup();
 // src/proxy/upstream/dispatch-upstream.js
 init_runtime_state();
 init_static_cache();
+
+// src/proxy/media/playback-windows.js
+init_constants();
+var PLAYBACK_HEAD_WINDOW_MAX_BYTES = 8 * 1024 * 1024;
+var PLAYBACK_JUMP_WINDOW_MAX_BYTES = 4 * 1024 * 1024;
+var PLAYBACK_EARLY_JUMP_MIN_START_BYTES = 8 * 1024 * 1024;
+var PLAYBACK_WINDOW_TTL_MS = 20 * 1e3;
+var PLAYBACK_EARLY_JUMP_ASSISTS = 2;
+var PLAYBACK_WINDOW_GLOBAL_BUDGET_BYTES = 48 * 1024 * 1024;
+function isEligiblePlaybackRequest(requestState) {
+  const method = String(requestState?.method || "").toUpperCase();
+  if (method !== "GET" && method !== "HEAD") return false;
+  if (requestState?.isBigStream !== true) return false;
+  if (requestState?.isMetadataPrewarm === true) return false;
+  if (requestState?.isImage === true || requestState?.isStaticFile === true || requestState?.isSubtitle === true) return false;
+  if (requestState?.isManifest === true || requestState?.isSegment === true || requestState?.isWsUpgrade === true) return false;
+  return true;
+}
+function getSearchParams(requestState) {
+  if (requestState?.requestUrl instanceof URL) return requestState.requestUrl.searchParams;
+  if (requestState?.activeFinalUrl instanceof URL) return requestState.activeFinalUrl.searchParams;
+  return null;
+}
+function readPlaybackIdentifiers(requestState) {
+  const searchParams = getSearchParams(requestState);
+  const playSessionId = String(
+    searchParams?.get("PlaySessionId") || searchParams?.get("PlaySessionID") || ""
+  ).trim();
+  const mediaSourceId = String(
+    requestState?.requestedMediaSourceId || searchParams?.get("MediaSourceId") || searchParams?.get("mediasourceid") || ""
+  ).trim();
+  const canonicalMediaKey = requestState?.activeFinalUrl instanceof URL ? buildExternalRedirectCacheKey("GET", requestState.activeFinalUrl, {
+    noiseQueryKeys: EXTERNAL_REDIRECT_CACHE_NOISE_QUERY_KEYS
+  }) : "";
+  return {
+    canonicalMediaKey,
+    playSessionId,
+    mediaSourceId
+  };
+}
+function buildPlaybackWindowSessionKey(requestState) {
+  if (!isEligiblePlaybackRequest(requestState)) return "";
+  const { canonicalMediaKey, playSessionId, mediaSourceId } = readPlaybackIdentifiers(requestState);
+  if (!canonicalMediaKey || !playSessionId || !mediaSourceId) return "";
+  return `${canonicalMediaKey}|${playSessionId}|${mediaSourceId}`;
+}
+function isExpired(entry, now = Date.now()) {
+  return !entry || now - Number(entry.createdAt || 0) > PLAYBACK_WINDOW_TTL_MS;
+}
+function isExpiredHint(entry, now = Date.now()) {
+  return !entry || now - Number(entry.startupSuccessAt || 0) > PLAYBACK_WINDOW_TTL_MS;
+}
+function prunePlaybackSessionHints(map, now = Date.now()) {
+  for (const [key, entry] of map.entries()) {
+    if (isExpiredHint(entry, now)) map.delete(key);
+  }
+}
+function getPlaybackWindowEntryBytes(entry) {
+  return Math.max(0, Number(entry?.byteLength) || 0);
+}
+function deletePlaybackWindowEntry(globals, map, key, entry = null) {
+  const current = entry || map.get(key);
+  if (!current) return false;
+  map.delete(key);
+  globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) - getPlaybackWindowEntryBytes(current));
+  return true;
+}
+function setPlaybackWindowEntry(globals, map, key, entry) {
+  const previous = map.get(key);
+  if (previous) {
+    globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) - getPlaybackWindowEntryBytes(previous));
+  }
+  map.set(key, entry);
+  globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) + getPlaybackWindowEntryBytes(entry));
+}
+function prunePlaybackWindowMap(globals, map, now = Date.now()) {
+  for (const [key, entry] of map.entries()) {
+    if (isExpired(entry, now)) deletePlaybackWindowEntry(globals, map, key, entry);
+  }
+}
+function prunePlaybackWindows(globals, now = Date.now()) {
+  prunePlaybackWindowMap(globals, globals.PlaybackHeadWindowCache, now);
+  prunePlaybackWindowMap(globals, globals.PlaybackJumpWindowCache, now);
+  prunePlaybackSessionHints(globals.PlaybackSessionHints, now);
+}
+function findOldestPlaybackWindow(globals) {
+  let victim = null;
+  const consider = (map) => {
+    for (const [key, entry] of map.entries()) {
+      const at = Number(entry?.lastAccessAt || entry?.createdAt || 0);
+      if (!victim || at < victim.at) {
+        victim = { map, key, entry, at };
+      }
+    }
+  };
+  consider(globals.PlaybackHeadWindowCache);
+  consider(globals.PlaybackJumpWindowCache);
+  return victim;
+}
+function enforcePlaybackWindowBudget(globals, now = Date.now()) {
+  prunePlaybackWindows(globals, now);
+  let totalBytes = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0));
+  while (totalBytes > PLAYBACK_WINDOW_GLOBAL_BUDGET_BYTES) {
+    const victim = findOldestPlaybackWindow(globals);
+    if (!victim) break;
+    deletePlaybackWindowEntry(globals, victim.map, victim.key, victim.entry);
+    totalBytes = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0));
+  }
+}
+function rememberPlaybackWindow(globals, map, key, entry) {
+  if (!key || !entry?.byteLength) return;
+  setPlaybackWindowEntry(globals, map, key, entry);
+  enforcePlaybackWindowBudget(globals, entry.createdAt || Date.now());
+}
+function rememberStartupSuccess(globals, sessionKey, now = Date.now()) {
+  if (!sessionKey) return;
+  globals.PlaybackSessionHints.set(sessionKey, {
+    startupSuccessAt: now,
+    remainingEarlyJumpAssists: PLAYBACK_EARLY_JUMP_ASSISTS,
+    lastSeenAt: now
+  });
+}
+function canServePlaybackWindow(entry, range) {
+  if (!entry || !range) return false;
+  if (range.start < entry.cachedStart || range.start > entry.cachedEnd) return false;
+  if (range.end === null) return true;
+  return range.end <= entry.cachedEnd;
+}
+function createWindowHitResponse(entry, range, method = "GET") {
+  const end = range.end === null ? entry.cachedEnd : range.end;
+  if (!Number.isFinite(end) || end < range.start) return null;
+  const offsetStart = range.start - entry.cachedStart;
+  const offsetEnd = end - entry.cachedStart + 1;
+  const bodySlice = entry.bytes.subarray(offsetStart, offsetEnd);
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "no-store",
+    "Content-Length": String(bodySlice.byteLength),
+    "Content-Range": `bytes ${range.start}-${end}/${Number.isFinite(entry.totalSize) && entry.totalSize > 0 ? entry.totalSize : "*"}`
+  });
+  if (entry.contentType) headers.set("Content-Type", entry.contentType);
+  return new Response(String(method || "").toUpperCase() === "HEAD" ? null : bodySlice, {
+    status: 206,
+    headers
+  });
+}
+function resolvePlaybackWindowHit(globals, map, sessionKey, range, route, method, now = Date.now()) {
+  const entry = map.get(sessionKey);
+  if (isExpired(entry, now)) {
+    deletePlaybackWindowEntry(globals, map, sessionKey, entry);
+    return null;
+  }
+  if (!canServePlaybackWindow(entry, range)) return null;
+  entry.lastAccessAt = now;
+  const response = createWindowHitResponse(entry, range, method);
+  if (!response) return null;
+  return { route, response };
+}
+function maybeServePlaybackWindowHit(globals, requestState) {
+  if (!isEligiblePlaybackRequest(requestState)) return null;
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  if (!range) return null;
+  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
+  if (!sessionKey) return null;
+  const now = Date.now();
+  prunePlaybackWindows(globals, now);
+  return resolvePlaybackWindowHit(
+    globals,
+    globals.PlaybackHeadWindowCache,
+    sessionKey,
+    range,
+    "head-window",
+    requestState.method,
+    now
+  ) || resolvePlaybackWindowHit(
+    globals,
+    globals.PlaybackJumpWindowCache,
+    sessionKey,
+    range,
+    "jump-window",
+    requestState.method,
+    now
+  );
+}
+function beginPlaybackJumpAssist(globals, requestState) {
+  if (!isEligiblePlaybackRequest(requestState)) {
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  if (!range || range.start < PLAYBACK_EARLY_JUMP_MIN_START_BYTES) {
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
+  if (!sessionKey) {
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  const now = Date.now();
+  prunePlaybackWindows(globals, now);
+  const hint = globals.PlaybackSessionHints.get(sessionKey);
+  if (!hint || isExpiredHint(hint, now) || Number(hint.remainingEarlyJumpAssists || 0) <= 0) {
+    globals.PlaybackSessionHints.delete(sessionKey);
+    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
+  }
+  hint.remainingEarlyJumpAssists = Math.max(0, Number(hint.remainingEarlyJumpAssists || 0) - 1);
+  hint.lastSeenAt = now;
+  return {
+    captureJumpWindow: true,
+    allowDeepRangeBudgetRelaxation: range.start >= PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES
+  };
+}
+async function readPlaybackWindowBytes(readable, maxBytes) {
+  const reader = readable.getReader();
+  const chunks = [];
+  let totalLength = 0;
+  try {
+    while (totalLength < maxBytes) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      const remaining = maxBytes - totalLength;
+      const slice = value.byteLength > remaining ? value.subarray(0, remaining) : value;
+      chunks.push(slice);
+      totalLength += slice.byteLength;
+      if (totalLength >= maxBytes) {
+        try {
+          await reader.cancel();
+        } catch (_) {
+        }
+        break;
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch (_) {
+    }
+  }
+  return totalLength > 0 ? concatUint8Arrays(chunks, totalLength) : new Uint8Array(0);
+}
+function shouldCaptureHeadWindow(requestState, response, sessionKey) {
+  if (!sessionKey) return false;
+  if (String(requestState?.method || "").toUpperCase() !== "GET") return false;
+  if (![200, 206].includes(Number(response?.status) || 0)) return false;
+  if (!response?.body) return false;
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  return !range || range.start === 0;
+}
+function shouldCaptureJumpWindow(requestState, response, sessionKey) {
+  if (!sessionKey) return false;
+  if (requestState?.playbackJumpAssist !== true) return false;
+  if (String(requestState?.method || "").toUpperCase() !== "GET") return false;
+  if (![200, 206].includes(Number(response?.status) || 0)) return false;
+  return !!response?.body;
+}
+async function capturePlaybackWindow(globals, map, sessionKey, captureBody, response, maxBytes, now = Date.now()) {
+  const bytes = await readPlaybackWindowBytes(captureBody, maxBytes);
+  if (!bytes.byteLength) return;
+  const responseRange = parseResponseByteRangeFromHeaders(response.headers);
+  if (!responseRange) return;
+  const cachedStart = Number(responseRange.start) || 0;
+  const cachedEnd = cachedStart + bytes.byteLength - 1;
+  rememberPlaybackWindow(globals, map, sessionKey, {
+    bytes,
+    byteLength: bytes.byteLength,
+    contentType: String(response.headers.get("Content-Type") || "").trim(),
+    totalSize: Number(responseRange.totalSize) || null,
+    cachedStart,
+    cachedEnd,
+    createdAt: now,
+    lastAccessAt: now
+  });
+}
+function attachPlaybackWindowCapture(globals, { requestState, response, executionContext }) {
+  if (!response?.body || !isEligiblePlaybackRequest(requestState)) {
+    return response?.body || null;
+  }
+  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
+  if (!sessionKey) return response.body;
+  const now = Date.now();
+  let captureTarget = null;
+  let captureMap = null;
+  let captureLimit = 0;
+  if (shouldCaptureHeadWindow(requestState, response, sessionKey)) {
+    rememberStartupSuccess(globals, sessionKey, now);
+    captureTarget = "head";
+    captureMap = globals.PlaybackHeadWindowCache;
+    captureLimit = PLAYBACK_HEAD_WINDOW_MAX_BYTES;
+  } else if (shouldCaptureJumpWindow(requestState, response, sessionKey)) {
+    captureTarget = "jump";
+    captureMap = globals.PlaybackJumpWindowCache;
+    captureLimit = PLAYBACK_JUMP_WINDOW_MAX_BYTES;
+  }
+  if (!captureTarget || !captureMap || captureLimit <= 0) return response.body;
+  const [clientBody, captureBody] = response.body.tee();
+  const captureTask = capturePlaybackWindow(globals, captureMap, sessionKey, captureBody, response, captureLimit, now).catch(() => {
+  });
+  if (typeof executionContext?.waitUntil === "function") executionContext.waitUntil(captureTask);
+  return clientBody;
+}
 
 // src/proxy/upstream/failover-utils.js
 function shouldAllowTargetFailover(requestState) {
@@ -7873,8 +8331,13 @@ async function followRedirectChain({
 function buildRedirectErrorResponse(payload, request = null, originOverride = null) {
   const headers = new Headers({
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    "X-Proxy-Route": "followed"
   });
+  const debugReason = String(payload?.code || "").trim();
+  if (debugReason) {
+    headers.set("X-Proxy-Debug-Reason", debugReason);
+  }
   applyBaseProxySecurityHeaders(headers);
   applyProxyCorsHeaders(headers, request, originOverride);
   return new Response(JSON.stringify(payload), {
@@ -8101,6 +8564,197 @@ function createFetchWithRedirectsHandlers({
 
 // src/proxy/upstream/dispatch-upstream.js
 init_constants();
+var PLAYBACK_CONTINUATION_LANE_TTL_MS = 15 * 1e3;
+var PLAYBACK_CONTINUATION_STALL_TTL_MS = 5 * 1e3;
+var PLAYBACK_CONTINUATION_STALL_MAX_SMALL_ADVANCE_BYTES = 2 * 1024 * 1024;
+var PLAYBACK_CONTINUATION_STALL_TRIGGER_STREAK = 2;
+var PLAYBACK_CONTINUATION_STALL_RECOVERY_PROBE_TIMEOUT_MS = 2500;
+function getPlaybackContinuationLaneKey(requestState) {
+  if (!requestState) return "";
+  const existing = String(requestState.playbackWindowSessionKey || "").trim();
+  if (existing) return existing;
+  const nextKey = buildPlaybackWindowSessionKey(requestState);
+  if (nextKey) requestState.playbackWindowSessionKey = nextKey;
+  return nextKey;
+}
+function readPlaybackContinuationLane(globals, requestState, now = Date.now()) {
+  const laneKey = getPlaybackContinuationLaneKey(requestState);
+  if (!laneKey) return { laneKey: "", laneEntry: null };
+  const laneEntry = globals.PlaybackContinuationLanes.get(laneKey);
+  if (!laneEntry) return { laneKey, laneEntry: null };
+  if (now - Number(laneEntry.updatedAt || 0) > PLAYBACK_CONTINUATION_LANE_TTL_MS) {
+    globals.PlaybackContinuationLanes.delete(laneKey);
+    return { laneKey, laneEntry: null };
+  }
+  return { laneKey, laneEntry };
+}
+function rememberPlaybackContinuationLane(globals, laneKey, currentState, route, finalUrl, now = Date.now()) {
+  if (!laneKey || !currentState) return;
+  globals.PlaybackContinuationLanes.set(laneKey, {
+    targetIndex: Number(currentState.activeTargetIndex) || 0,
+    targetHost: String(currentState.activeTargetHost || "").trim(),
+    route: String(route || "").trim(),
+    finalUrl: finalUrl instanceof URL ? finalUrl.toString() : String(finalUrl || "").trim(),
+    updatedAt: now
+  });
+}
+function clearPlaybackContinuationLane(globals, laneKey) {
+  if (!laneKey) return;
+  globals.PlaybackContinuationLanes.delete(laneKey);
+}
+function getPlaybackContinuationStallRangeStart(requestState) {
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  if (!range || !Number.isFinite(range.start)) return null;
+  if (range.start < PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES) return null;
+  return range.start;
+}
+function readPlaybackContinuationStall(globals, requestState, now = Date.now()) {
+  const stallKey = getPlaybackContinuationLaneKey(requestState);
+  if (!stallKey) return { stallKey: "", stallEntry: null };
+  const stallEntry = globals.PlaybackContinuationStalls.get(stallKey);
+  if (!stallEntry) return { stallKey, stallEntry: null };
+  if (now - Number(stallEntry.updatedAt || 0) > PLAYBACK_CONTINUATION_STALL_TTL_MS) {
+    globals.PlaybackContinuationStalls.delete(stallKey);
+    return { stallKey, stallEntry: null };
+  }
+  return { stallKey, stallEntry };
+}
+function consumePlaybackContinuationStallRecovery(globals, requestState, now = Date.now()) {
+  const { stallKey, stallEntry } = readPlaybackContinuationStall(globals, requestState, now);
+  const armed = Number(stallEntry?.smallAdvanceStreak || 0) >= PLAYBACK_CONTINUATION_STALL_TRIGGER_STREAK;
+  if (armed) {
+    globals.PlaybackContinuationStalls.delete(stallKey);
+  }
+  return {
+    stallKey,
+    stallEntry,
+    armed
+  };
+}
+function rememberPlaybackContinuationStall(globals, stallKey, currentState, now = Date.now()) {
+  if (!stallKey || !currentState) return;
+  const rangeStart = getPlaybackContinuationStallRangeStart(currentState);
+  if (!Number.isFinite(rangeStart)) {
+    globals.PlaybackContinuationStalls.delete(stallKey);
+    return;
+  }
+  const previousEntry = globals.PlaybackContinuationStalls.get(stallKey);
+  const previousUpdatedAt = Number(previousEntry?.updatedAt || 0);
+  const previousRangeStart = Number(previousEntry?.lastRangeStart);
+  let smallAdvanceStreak = 0;
+  if (Number.isFinite(previousUpdatedAt) && previousUpdatedAt > 0 && now - previousUpdatedAt <= PLAYBACK_CONTINUATION_STALL_TTL_MS && Number.isFinite(previousRangeStart)) {
+    const advance = rangeStart - previousRangeStart;
+    if (advance > 0 && advance < PLAYBACK_CONTINUATION_STALL_MAX_SMALL_ADVANCE_BYTES) {
+      smallAdvanceStreak = Number(previousEntry?.smallAdvanceStreak || 0) + 1;
+    }
+  }
+  globals.PlaybackContinuationStalls.set(stallKey, {
+    lastRangeStart: rangeStart,
+    targetIndex: Number(currentState.activeTargetIndex) || 0,
+    updatedAt: now,
+    smallAdvanceStreak
+  });
+}
+function clearPlaybackContinuationStall(globals, stallKey) {
+  if (!stallKey) return;
+  globals.PlaybackContinuationStalls.delete(stallKey);
+}
+function resolvePlaybackContinuationRecoveryProbeTimeoutMs(context) {
+  const configured = Number(context?.continuationRecoveryTimeoutMs);
+  if (Number.isFinite(configured) && configured >= 0) {
+    return Math.floor(configured);
+  }
+  return PLAYBACK_CONTINUATION_STALL_RECOVERY_PROBE_TIMEOUT_MS;
+}
+function applyPlaybackContinuationRecoveryProbeContext(context) {
+  const probeTimeoutMs = resolvePlaybackContinuationRecoveryProbeTimeoutMs(context);
+  if (!(probeTimeoutMs >= 0)) return context;
+  const existingTimeoutMs = Number(context?.upstreamTimeoutMs);
+  const nextTimeoutMs = Number.isFinite(existingTimeoutMs) && existingTimeoutMs >= 0 ? Math.min(existingTimeoutMs, probeTimeoutMs) : probeTimeoutMs;
+  if (Number.isFinite(existingTimeoutMs) && existingTimeoutMs === nextTimeoutMs) {
+    return context;
+  }
+  return {
+    ...context,
+    upstreamTimeoutMs: nextTimeoutMs
+  };
+}
+function applyPlaybackContinuationLaneOrdering(targetEntries, laneEntry) {
+  if (!Array.isArray(targetEntries) || targetEntries.length <= 1 || !laneEntry) return targetEntries;
+  const targetIndex = Number(laneEntry.targetIndex);
+  if (!Number.isFinite(targetIndex) || targetIndex < 0) return targetEntries;
+  const lanePos = targetEntries.findIndex((entry) => Number(entry?.index) === targetIndex);
+  if (lanePos <= 0) return targetEntries;
+  const laneTarget = targetEntries[lanePos];
+  if (!laneTarget) return targetEntries;
+  return [laneTarget, ...targetEntries.slice(0, lanePos), ...targetEntries.slice(lanePos + 1)];
+}
+function shouldHydrateStartupSeededContinuationRedirect(requestState, laneEntry) {
+  if (!requestState || !laneEntry) return false;
+  if (!String(laneEntry.finalUrl || "").trim()) return false;
+  const laneRoute = String(laneEntry.route || "").toLowerCase();
+  if (!laneRoute.includes("followed") && !laneRoute.includes("redirect-cache")) return false;
+  const range = parseSingleByteRangeHeader(requestState.rangeHeader);
+  if (!range || !Number.isFinite(range.start)) return false;
+  if (range.start <= 0) return false;
+  return range.start < PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES;
+}
+function hydrateStartupSeededContinuationRedirect(globals, requestState, context, laneEntry) {
+  if (!shouldHydrateStartupSeededContinuationRedirect(requestState, laneEntry)) return false;
+  if (Number(laneEntry.targetIndex) !== Number(requestState?.activeTargetIndex)) return false;
+  try {
+    rememberExternalRedirectUrl(
+      globals,
+      requestState.method,
+      requestState.activeFinalUrl,
+      new URL(String(laneEntry.finalUrl)),
+      {
+        context,
+        persist: false
+      }
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+function applyPlaybackContinuationStallRecoveryOrdering(targetEntries, requestState, stallEntry) {
+  if (!Array.isArray(targetEntries) || !targetEntries.length || !stallEntry) {
+    return {
+      targetEntries,
+      failoverOffset: 0
+    };
+  }
+  if (targetEntries.length <= 1) {
+    return {
+      targetEntries,
+      failoverOffset: 0
+    };
+  }
+  const stalledTargetIndex = Number(stallEntry.targetIndex);
+  if (!Number.isFinite(stalledTargetIndex) || stalledTargetIndex < 0) {
+    return {
+      targetEntries,
+      failoverOffset: 0
+    };
+  }
+  const stalledPos = targetEntries.findIndex((entry) => Number(entry?.index) === stalledTargetIndex);
+  if (stalledPos < 0) {
+    return {
+      targetEntries,
+      failoverOffset: 0
+    };
+  }
+  const reorderedTargets = [
+    ...targetEntries.slice(0, stalledPos),
+    ...targetEntries.slice(stalledPos + 1),
+    targetEntries[stalledPos]
+  ];
+  return {
+    targetEntries: reorderedTargets,
+    failoverOffset: Number(reorderedTargets[0]?.index) !== Number(requestState?.activeTargetIndex) ? 1 : 0
+  };
+}
 function captureUpstreamResponseDiagnostics(diagnostics, response, finalUrl) {
   if (!diagnostics || !response) return;
   const finalHost = finalUrl instanceof URL ? finalUrl.host : "";
@@ -8108,7 +8762,13 @@ function captureUpstreamResponseDiagnostics(diagnostics, response, finalUrl) {
   diagnostics.upstreamStatus = Number(response.status) || 0;
   diagnostics.upstreamContentType = String(response.headers?.get?.("Content-Type") || "").trim();
   diagnostics.upstreamCacheStatus = String(response.headers?.get?.("CF-Cache-Status") || "").trim();
-  diagnostics.debugReason = "";
+  if ((Number(response.status) || 0) < 500) {
+    diagnostics.debugReason = "";
+    return;
+  }
+  if (!String(diagnostics.debugReason || "").trim()) {
+    diagnostics.debugReason = describeUpstreamFailure(response.status);
+  }
 }
 async function dispatchUpstream({
   request,
@@ -8130,7 +8790,8 @@ async function dispatchUpstream({
     const budgetState = createPlaybackOptimizationBudgetState(request, currentState);
     const newHeaders = buildUpstreamHeaders(request, currentState, targetEntry.targetBase, {
       forceH1: context?.forceH1 === true,
-      customHeaders: context?.nodeHeaders
+      customHeaders: context?.nodeHeaders,
+      realClientIpMode: context?.realClientIpMode
     });
     const cf = buildCloudflareFetchOptions(currentState);
     const { fetchWithRedirectsWithHeaders, fetchWithRedirects } = createFetchWithRedirectsHandlers({
@@ -8201,7 +8862,14 @@ async function dispatchUpstream({
         diagnostics.failoverReason = lastFailureReason;
         return {
           response: null,
-          errorResponse: buildBadGatewayErrorResponse(request, context?.finalOrigin),
+          errorResponse: buildBadGatewayErrorResponse(
+            request,
+            context?.finalOrigin,
+            decorateBudgetRoute(
+              attemptIndex === 0 ? "passthrough" : "origin-failover",
+              budgetState.degraded
+            )
+          ),
           route: targetAwareRoute,
           hops: 0,
           requestState: currentState,
@@ -8233,7 +8901,11 @@ async function dispatchUpstream({
   }
   return {
     response: null,
-    errorResponse: buildBadGatewayErrorResponse(request, context?.finalOrigin),
+    errorResponse: buildBadGatewayErrorResponse(
+      request,
+      context?.finalOrigin,
+      decorateBudgetRoute("passthrough", false)
+    ),
     route: "passthrough",
     hops: 0,
     requestState,
@@ -8286,7 +8958,8 @@ async function dispatchStartupMediaUpstream({
     requestState,
     context,
     diagnostics,
-    disableBasePathLearning: false
+    disableBasePathLearning: false,
+    seedContinuationLane: true
   });
   if (!shouldFallbackStartupHtmlErrorToDirectExternal(upstream, context)) {
     return upstream;
@@ -8346,54 +9019,95 @@ async function dispatchFastPathUpstream({
   context,
   diagnostics,
   disableBasePathLearning = false,
-  preserveBudgetSemantics = false
+  preserveBudgetSemantics = false,
+  seedContinuationLane = false
 }) {
   const upstreamStartedAt = Date.now();
   const replay = createReplayBodyAccessor(request, requestState.method);
-  const orderedTargets = orderTargetEntries(context.targetEntries, requestState.activeTargetIndex);
+  const stallRecovery = preserveBudgetSemantics ? consumePlaybackContinuationStallRecovery(GLOBALS, requestState, upstreamStartedAt) : { stallKey: "", stallEntry: null, armed: false };
+  const shouldUseContinuationLaneState = preserveBudgetSemantics || seedContinuationLane;
+  const laneState = shouldUseContinuationLaneState ? readPlaybackContinuationLane(GLOBALS, requestState, upstreamStartedAt) : { laneKey: "", laneEntry: null };
+  let orderedTargets = orderTargetEntries(context.targetEntries, requestState.activeTargetIndex);
+  if (!stallRecovery.armed) {
+    orderedTargets = applyPlaybackContinuationLaneOrdering(orderedTargets, laneState.laneEntry);
+  }
+  const stallOrderedTargets = stallRecovery.armed ? applyPlaybackContinuationStallRecoveryOrdering(orderedTargets, requestState, stallRecovery.stallEntry) : { targetEntries: orderedTargets, failoverOffset: 0 };
+  orderedTargets = stallOrderedTargets.targetEntries;
+  const recoveryFailoverOffset = Number(stallOrderedTargets.failoverOffset || 0);
+  if (stallRecovery.armed) {
+    clearExternalRedirectUrl(
+      GLOBALS,
+      requestState?.method || request.method,
+      requestState?.activeFinalUrl,
+      context
+    );
+  }
   diagnostics.targetCount = orderedTargets.length || 1;
   let lastFailureReason = "";
   let lastBudgetState = null;
   for (let attemptIndex = 0; attemptIndex < orderedTargets.length; attemptIndex += 1) {
     const targetEntry = orderedTargets[attemptIndex];
-    const currentState = attemptIndex === 0 ? requestState : buildTargetRequestState(
+    const currentState = attemptIndex === 0 && Number(targetEntry?.index) === Number(requestState?.activeTargetIndex) ? requestState : buildTargetRequestState(
       GLOBALS,
       requestState,
       targetEntry,
       context.proxyPrefix,
       { disableBasePathLearning }
     );
+    if (preserveBudgetSemantics && attemptIndex === 0) {
+      hydrateStartupSeededContinuationRedirect(
+        GLOBALS,
+        currentState,
+        context,
+        laneState.laneEntry
+      );
+    }
     const budgetState = preserveBudgetSemantics ? createPlaybackOptimizationBudgetState(request, currentState) : null;
     lastBudgetState = budgetState;
+    const fastPathContext = stallRecovery.armed && attemptIndex === 0 && recoveryFailoverOffset > 0 ? applyPlaybackContinuationRecoveryProbeContext(context) : context;
     const newHeaders = buildUpstreamHeaders(request, currentState, targetEntry.targetBase, {
       forceH1: context?.forceH1 === true,
-      customHeaders: context?.nodeHeaders
+      customHeaders: context?.nodeHeaders,
+      realClientIpMode: context?.realClientIpMode
     });
     const cf = buildCloudflareFetchOptions(currentState);
     const { fetchWithRedirectsWithHeaders, fetchWithRedirects } = createFetchWithRedirectsHandlers({
       request,
       currentState,
-      context,
+      context: fastPathContext,
       targetEntry,
       replay,
       cf,
       newHeaders
     });
     try {
-      const fetchResult = await fetchWithRedirects(currentState.activeFinalUrl, attemptIndex === 0);
-      const targetAwareRoute = attemptIndex === 0 ? fetchResult.route : fetchResult.route === "passthrough" ? "origin-failover" : `origin-failover-${fetchResult.route}`;
+      let fetchResult = await fetchWithRedirects(currentState.activeFinalUrl, attemptIndex === 0);
+      fetchResult = await maybeRecoverRetryableFastPathFailure({
+        fetchResult,
+        request,
+        requestState: currentState,
+        context,
+        fetchWithRedirects,
+        preserveBudgetSemantics,
+        attemptIndex,
+        targetCount: orderedTargets.length
+      });
+      const effectiveAttemptIndex = attemptIndex + recoveryFailoverOffset;
+      const targetAwareRoute = effectiveAttemptIndex === 0 ? fetchResult.route : fetchResult.route === "passthrough" ? "origin-failover" : `origin-failover-${fetchResult.route}`;
       diagnostics.upstreamMs = Date.now() - upstreamStartedAt;
       diagnostics.route = decorateBudgetRoute(targetAwareRoute, budgetState?.degraded === true);
       diagnostics.hops = fetchResult.hops;
       diagnostics.targetHost = currentState.activeTargetHost;
       diagnostics.targetIndex = currentState.activeTargetIndex + 1;
-      diagnostics.failover = attemptIndex > 0 ? "1" : "0";
+      diagnostics.failover = effectiveAttemptIndex > 0 ? "1" : "0";
       diagnostics.failoverReason = lastFailureReason;
       captureUpstreamResponseDiagnostics(diagnostics, fetchResult.response, fetchResult.finalUrl);
       if (budgetState?.degraded) {
         markPlaybackOptimizationBudgetDegraded(GLOBALS, budgetState, budgetState.reason || "range");
       }
       if (fetchResult.errorResponse) {
+        clearPlaybackContinuationLane(GLOBALS, laneState.laneKey);
+        clearPlaybackContinuationStall(GLOBALS, stallRecovery.stallKey);
         return {
           ...fetchResult,
           route: targetAwareRoute,
@@ -8412,6 +9126,29 @@ async function dispatchFastPathUpstream({
         lastFailureReason = describeUpstreamFailure(fetchResult.response.status);
         continue;
       }
+      const safeStatus = Number(fetchResult.response?.status) || 0;
+      if (safeStatus >= 500) {
+        clearPlaybackContinuationLane(GLOBALS, laneState.laneKey);
+        clearPlaybackContinuationStall(GLOBALS, stallRecovery.stallKey);
+      } else if ((preserveBudgetSemantics || seedContinuationLane) && safeStatus >= 200 && safeStatus < 400) {
+        const rememberedAt = Date.now();
+        rememberPlaybackContinuationLane(
+          GLOBALS,
+          laneState.laneKey,
+          currentState,
+          targetAwareRoute,
+          fetchResult.finalUrl,
+          rememberedAt
+        );
+        if (preserveBudgetSemantics) {
+          rememberPlaybackContinuationStall(
+            GLOBALS,
+            stallRecovery.stallKey,
+            currentState,
+            rememberedAt
+          );
+        }
+      }
       return {
         ...fetchResult,
         route: targetAwareRoute,
@@ -8428,22 +9165,28 @@ async function dispatchFastPathUpstream({
     } catch (error) {
       lastFailureReason = describeUpstreamFailure(error);
       if (attemptIndex === orderedTargets.length - 1) {
+        clearPlaybackContinuationLane(GLOBALS, laneState.laneKey);
+        clearPlaybackContinuationStall(GLOBALS, stallRecovery.stallKey);
         diagnostics.upstreamMs = Date.now() - upstreamStartedAt;
         diagnostics.route = decorateBudgetRoute(
-          attemptIndex === 0 ? "passthrough" : "origin-failover",
+          attemptIndex + recoveryFailoverOffset === 0 ? "passthrough" : "origin-failover",
           budgetState?.degraded === true
         );
         diagnostics.hops = 0;
         diagnostics.targetHost = currentState.activeTargetHost;
         diagnostics.targetIndex = currentState.activeTargetIndex + 1;
-        diagnostics.failover = attemptIndex > 0 ? "1" : "0";
+        diagnostics.failover = attemptIndex + recoveryFailoverOffset > 0 ? "1" : "0";
         diagnostics.failoverReason = lastFailureReason;
         if (budgetState?.degraded) {
           markPlaybackOptimizationBudgetDegraded(GLOBALS, budgetState, budgetState.reason || "range");
         }
         return {
           response: null,
-          errorResponse: buildBadGatewayErrorResponse(request, context?.finalOrigin),
+          errorResponse: buildBadGatewayErrorResponse(
+            request,
+            context?.finalOrigin,
+            diagnostics.route
+          ),
           route: diagnostics.route,
           hops: 0,
           requestState: currentState,
@@ -8464,12 +9207,18 @@ async function dispatchFastPathUpstream({
   diagnostics.hops = 0;
   diagnostics.failover = "0";
   diagnostics.failoverReason = lastFailureReason;
+  clearPlaybackContinuationLane(GLOBALS, laneState.laneKey);
+  clearPlaybackContinuationStall(GLOBALS, stallRecovery.stallKey);
   if (lastBudgetState?.degraded) {
     markPlaybackOptimizationBudgetDegraded(GLOBALS, lastBudgetState, lastBudgetState.reason || "range");
   }
   return {
     response: null,
-    errorResponse: buildBadGatewayErrorResponse(request, context?.finalOrigin),
+    errorResponse: buildBadGatewayErrorResponse(
+      request,
+      context?.finalOrigin,
+      diagnostics.route
+    ),
     route: "passthrough",
     hops: 0,
     requestState,
@@ -8483,10 +9232,11 @@ async function dispatchFastPathUpstream({
     budgetDegraded: lastBudgetState?.degraded === true
   };
 }
-function buildBadGatewayErrorResponse(request, originOverride = null) {
+function buildBadGatewayErrorResponse(request, originOverride = null, route = "passthrough") {
   const headers = new Headers({
     "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store"
+    "Cache-Control": "no-store",
+    "X-Proxy-Route": String(route || "passthrough")
   });
   applyBaseProxySecurityHeaders(headers);
   applyProxyCorsHeaders(headers, request, originOverride);
@@ -8494,6 +9244,48 @@ function buildBadGatewayErrorResponse(request, originOverride = null) {
     JSON.stringify({ error: "Bad Gateway", code: 502, message: "All proxy attempts failed." }),
     { status: 502, headers }
   );
+}
+async function maybeRecoverRetryableFastPathFailure({
+  fetchResult,
+  request,
+  requestState,
+  context,
+  fetchWithRedirects,
+  preserveBudgetSemantics,
+  attemptIndex,
+  targetCount
+}) {
+  const response = fetchResult?.response;
+  const status = Number(response?.status) || 0;
+  const method = String(requestState?.method || request?.method || "").toUpperCase();
+  if (!preserveBudgetSemantics) return fetchResult;
+  if (method !== "GET" && method !== "HEAD") return fetchResult;
+  if (!RETRYABLE_ORIGIN_STATUSES.has(status)) return fetchResult;
+  if (attemptIndex < Math.max(0, Number(targetCount || 0) - 1)) return fetchResult;
+  try {
+    response?.body?.cancel?.();
+  } catch (_) {
+  }
+  clearExternalRedirectUrl(
+    GLOBALS,
+    requestState?.method || request?.method,
+    requestState?.activeFinalUrl,
+    context
+  );
+  try {
+    const recovered = await fetchWithRedirects(requestState.activeFinalUrl, false);
+    if (recovered?.response && !RETRYABLE_ORIGIN_STATUSES.has(Number(recovered.response.status) || 0)) {
+      return recovered;
+    }
+    if (recovered?.errorResponse) {
+      return recovered;
+    }
+    if (recovered?.response) {
+      return recovered;
+    }
+  } catch (_) {
+  }
+  return fetchResult;
 }
 function shouldFallbackStartupHtmlErrorToDirectExternal(upstream, context) {
   if (context?.forceExternalProxy === false) return false;
@@ -8575,307 +9367,6 @@ async function applyFallbackStrategy({
 
 // src/proxy/pipeline/handle.js
 init_static_cache();
-
-// src/proxy/media/playback-windows.js
-init_constants();
-var PLAYBACK_HEAD_WINDOW_MAX_BYTES = 8 * 1024 * 1024;
-var PLAYBACK_JUMP_WINDOW_MAX_BYTES = 4 * 1024 * 1024;
-var PLAYBACK_EARLY_JUMP_MIN_START_BYTES = 8 * 1024 * 1024;
-var PLAYBACK_WINDOW_TTL_MS = 20 * 1e3;
-var PLAYBACK_EARLY_JUMP_ASSISTS = 2;
-var PLAYBACK_WINDOW_GLOBAL_BUDGET_BYTES = 48 * 1024 * 1024;
-function isEligiblePlaybackRequest(requestState) {
-  const method = String(requestState?.method || "").toUpperCase();
-  if (method !== "GET" && method !== "HEAD") return false;
-  if (requestState?.isBigStream !== true) return false;
-  if (requestState?.isMetadataPrewarm === true) return false;
-  if (requestState?.isImage === true || requestState?.isStaticFile === true || requestState?.isSubtitle === true) return false;
-  if (requestState?.isManifest === true || requestState?.isSegment === true || requestState?.isWsUpgrade === true) return false;
-  return true;
-}
-function getSearchParams(requestState) {
-  if (requestState?.requestUrl instanceof URL) return requestState.requestUrl.searchParams;
-  if (requestState?.activeFinalUrl instanceof URL) return requestState.activeFinalUrl.searchParams;
-  return null;
-}
-function readPlaybackIdentifiers(requestState) {
-  const searchParams = getSearchParams(requestState);
-  const playSessionId = String(
-    searchParams?.get("PlaySessionId") || searchParams?.get("PlaySessionID") || ""
-  ).trim();
-  const mediaSourceId = String(
-    requestState?.requestedMediaSourceId || searchParams?.get("MediaSourceId") || searchParams?.get("mediasourceid") || ""
-  ).trim();
-  const canonicalMediaKey = requestState?.activeFinalUrl instanceof URL ? buildExternalRedirectCacheKey("GET", requestState.activeFinalUrl, {
-    noiseQueryKeys: EXTERNAL_REDIRECT_CACHE_NOISE_QUERY_KEYS
-  }) : "";
-  return {
-    canonicalMediaKey,
-    playSessionId,
-    mediaSourceId
-  };
-}
-function buildPlaybackWindowSessionKey(requestState) {
-  if (!isEligiblePlaybackRequest(requestState)) return "";
-  const { canonicalMediaKey, playSessionId, mediaSourceId } = readPlaybackIdentifiers(requestState);
-  if (!canonicalMediaKey || !playSessionId || !mediaSourceId) return "";
-  return `${canonicalMediaKey}|${playSessionId}|${mediaSourceId}`;
-}
-function isExpired(entry, now = Date.now()) {
-  return !entry || now - Number(entry.createdAt || 0) > PLAYBACK_WINDOW_TTL_MS;
-}
-function isExpiredHint(entry, now = Date.now()) {
-  return !entry || now - Number(entry.startupSuccessAt || 0) > PLAYBACK_WINDOW_TTL_MS;
-}
-function prunePlaybackSessionHints(map, now = Date.now()) {
-  for (const [key, entry] of map.entries()) {
-    if (isExpiredHint(entry, now)) map.delete(key);
-  }
-}
-function getPlaybackWindowEntryBytes(entry) {
-  return Math.max(0, Number(entry?.byteLength) || 0);
-}
-function deletePlaybackWindowEntry(globals, map, key, entry = null) {
-  const current = entry || map.get(key);
-  if (!current) return false;
-  map.delete(key);
-  globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) - getPlaybackWindowEntryBytes(current));
-  return true;
-}
-function setPlaybackWindowEntry(globals, map, key, entry) {
-  const previous = map.get(key);
-  if (previous) {
-    globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) - getPlaybackWindowEntryBytes(previous));
-  }
-  map.set(key, entry);
-  globals.PlaybackWindowBytesTotal = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0) + getPlaybackWindowEntryBytes(entry));
-}
-function prunePlaybackWindowMap(globals, map, now = Date.now()) {
-  for (const [key, entry] of map.entries()) {
-    if (isExpired(entry, now)) deletePlaybackWindowEntry(globals, map, key, entry);
-  }
-}
-function prunePlaybackWindows(globals, now = Date.now()) {
-  prunePlaybackWindowMap(globals, globals.PlaybackHeadWindowCache, now);
-  prunePlaybackWindowMap(globals, globals.PlaybackJumpWindowCache, now);
-  prunePlaybackSessionHints(globals.PlaybackSessionHints, now);
-}
-function findOldestPlaybackWindow(globals) {
-  let victim = null;
-  const consider = (map) => {
-    for (const [key, entry] of map.entries()) {
-      const at = Number(entry?.lastAccessAt || entry?.createdAt || 0);
-      if (!victim || at < victim.at) {
-        victim = { map, key, entry, at };
-      }
-    }
-  };
-  consider(globals.PlaybackHeadWindowCache);
-  consider(globals.PlaybackJumpWindowCache);
-  return victim;
-}
-function enforcePlaybackWindowBudget(globals, now = Date.now()) {
-  prunePlaybackWindows(globals, now);
-  let totalBytes = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0));
-  while (totalBytes > PLAYBACK_WINDOW_GLOBAL_BUDGET_BYTES) {
-    const victim = findOldestPlaybackWindow(globals);
-    if (!victim) break;
-    deletePlaybackWindowEntry(globals, victim.map, victim.key, victim.entry);
-    totalBytes = Math.max(0, Number(globals.PlaybackWindowBytesTotal || 0));
-  }
-}
-function rememberPlaybackWindow(globals, map, key, entry) {
-  if (!key || !entry?.byteLength) return;
-  setPlaybackWindowEntry(globals, map, key, entry);
-  enforcePlaybackWindowBudget(globals, entry.createdAt || Date.now());
-}
-function rememberStartupSuccess(globals, sessionKey, now = Date.now()) {
-  if (!sessionKey) return;
-  globals.PlaybackSessionHints.set(sessionKey, {
-    startupSuccessAt: now,
-    remainingEarlyJumpAssists: PLAYBACK_EARLY_JUMP_ASSISTS,
-    lastSeenAt: now
-  });
-}
-function canServePlaybackWindow(entry, range) {
-  if (!entry || !range) return false;
-  if (range.start < entry.cachedStart || range.start > entry.cachedEnd) return false;
-  if (range.end === null) return true;
-  return range.end <= entry.cachedEnd;
-}
-function createWindowHitResponse(entry, range, method = "GET") {
-  const end = range.end === null ? entry.cachedEnd : range.end;
-  if (!Number.isFinite(end) || end < range.start) return null;
-  const offsetStart = range.start - entry.cachedStart;
-  const offsetEnd = end - entry.cachedStart + 1;
-  const bodySlice = entry.bytes.subarray(offsetStart, offsetEnd);
-  const headers = new Headers({
-    "Accept-Ranges": "bytes",
-    "Cache-Control": "no-store",
-    "Content-Length": String(bodySlice.byteLength),
-    "Content-Range": `bytes ${range.start}-${end}/${Number.isFinite(entry.totalSize) && entry.totalSize > 0 ? entry.totalSize : "*"}`
-  });
-  if (entry.contentType) headers.set("Content-Type", entry.contentType);
-  return new Response(String(method || "").toUpperCase() === "HEAD" ? null : bodySlice, {
-    status: 206,
-    headers
-  });
-}
-function resolvePlaybackWindowHit(globals, map, sessionKey, range, route, method, now = Date.now()) {
-  const entry = map.get(sessionKey);
-  if (isExpired(entry, now)) {
-    deletePlaybackWindowEntry(globals, map, sessionKey, entry);
-    return null;
-  }
-  if (!canServePlaybackWindow(entry, range)) return null;
-  entry.lastAccessAt = now;
-  const response = createWindowHitResponse(entry, range, method);
-  if (!response) return null;
-  return { route, response };
-}
-function maybeServePlaybackWindowHit(globals, requestState) {
-  if (!isEligiblePlaybackRequest(requestState)) return null;
-  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
-  if (!range) return null;
-  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
-  if (!sessionKey) return null;
-  const now = Date.now();
-  prunePlaybackWindows(globals, now);
-  return resolvePlaybackWindowHit(
-    globals,
-    globals.PlaybackHeadWindowCache,
-    sessionKey,
-    range,
-    "head-window",
-    requestState.method,
-    now
-  ) || resolvePlaybackWindowHit(
-    globals,
-    globals.PlaybackJumpWindowCache,
-    sessionKey,
-    range,
-    "jump-window",
-    requestState.method,
-    now
-  );
-}
-function beginPlaybackJumpAssist(globals, requestState) {
-  if (!isEligiblePlaybackRequest(requestState)) {
-    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
-  }
-  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
-  if (!range || range.start < PLAYBACK_EARLY_JUMP_MIN_START_BYTES) {
-    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
-  }
-  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
-  if (!sessionKey) {
-    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
-  }
-  const now = Date.now();
-  prunePlaybackWindows(globals, now);
-  const hint = globals.PlaybackSessionHints.get(sessionKey);
-  if (!hint || isExpiredHint(hint, now) || Number(hint.remainingEarlyJumpAssists || 0) <= 0) {
-    globals.PlaybackSessionHints.delete(sessionKey);
-    return { captureJumpWindow: false, allowDeepRangeBudgetRelaxation: false };
-  }
-  hint.remainingEarlyJumpAssists = Math.max(0, Number(hint.remainingEarlyJumpAssists || 0) - 1);
-  hint.lastSeenAt = now;
-  return {
-    captureJumpWindow: true,
-    allowDeepRangeBudgetRelaxation: range.start >= PLAYBACK_OPTIMIZATION_DEEP_RANGE_START_BYTES
-  };
-}
-async function readPlaybackWindowBytes(readable, maxBytes) {
-  const reader = readable.getReader();
-  const chunks = [];
-  let totalLength = 0;
-  try {
-    while (totalLength < maxBytes) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value?.byteLength) continue;
-      const remaining = maxBytes - totalLength;
-      const slice = value.byteLength > remaining ? value.subarray(0, remaining) : value;
-      chunks.push(slice);
-      totalLength += slice.byteLength;
-      if (totalLength >= maxBytes) {
-        try {
-          await reader.cancel();
-        } catch (_) {
-        }
-        break;
-      }
-    }
-  } finally {
-    try {
-      reader.releaseLock();
-    } catch (_) {
-    }
-  }
-  return totalLength > 0 ? concatUint8Arrays(chunks, totalLength) : new Uint8Array(0);
-}
-function shouldCaptureHeadWindow(requestState, response, sessionKey) {
-  if (!sessionKey) return false;
-  if (String(requestState?.method || "").toUpperCase() !== "GET") return false;
-  if (![200, 206].includes(Number(response?.status) || 0)) return false;
-  if (!response?.body) return false;
-  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
-  return !range || range.start === 0;
-}
-function shouldCaptureJumpWindow(requestState, response, sessionKey) {
-  if (!sessionKey) return false;
-  if (requestState?.playbackJumpAssist !== true) return false;
-  if (String(requestState?.method || "").toUpperCase() !== "GET") return false;
-  if (![200, 206].includes(Number(response?.status) || 0)) return false;
-  return !!response?.body;
-}
-async function capturePlaybackWindow(globals, map, sessionKey, captureBody, response, maxBytes, now = Date.now()) {
-  const bytes = await readPlaybackWindowBytes(captureBody, maxBytes);
-  if (!bytes.byteLength) return;
-  const responseRange = parseResponseByteRangeFromHeaders(response.headers);
-  if (!responseRange) return;
-  const cachedStart = Number(responseRange.start) || 0;
-  const cachedEnd = cachedStart + bytes.byteLength - 1;
-  rememberPlaybackWindow(globals, map, sessionKey, {
-    bytes,
-    byteLength: bytes.byteLength,
-    contentType: String(response.headers.get("Content-Type") || "").trim(),
-    totalSize: Number(responseRange.totalSize) || null,
-    cachedStart,
-    cachedEnd,
-    createdAt: now,
-    lastAccessAt: now
-  });
-}
-function attachPlaybackWindowCapture(globals, { requestState, response, executionContext }) {
-  if (!response?.body || !isEligiblePlaybackRequest(requestState)) {
-    return response?.body || null;
-  }
-  const sessionKey = requestState?.playbackWindowSessionKey || buildPlaybackWindowSessionKey(requestState);
-  if (!sessionKey) return response.body;
-  const now = Date.now();
-  let captureTarget = null;
-  let captureMap = null;
-  let captureLimit = 0;
-  if (shouldCaptureHeadWindow(requestState, response, sessionKey)) {
-    rememberStartupSuccess(globals, sessionKey, now);
-    captureTarget = "head";
-    captureMap = globals.PlaybackHeadWindowCache;
-    captureLimit = PLAYBACK_HEAD_WINDOW_MAX_BYTES;
-  } else if (shouldCaptureJumpWindow(requestState, response, sessionKey)) {
-    captureTarget = "jump";
-    captureMap = globals.PlaybackJumpWindowCache;
-    captureLimit = PLAYBACK_JUMP_WINDOW_MAX_BYTES;
-  }
-  if (!captureTarget || !captureMap || captureLimit <= 0) return response.body;
-  const [clientBody, captureBody] = response.body.tee();
-  const captureTask = capturePlaybackWindow(globals, captureMap, sessionKey, captureBody, response, captureLimit, now).catch(() => {
-  });
-  if (typeof executionContext?.waitUntil === "function") executionContext.waitUntil(captureTask);
-  return clientBody;
-}
-
-// src/proxy/pipeline/handle.js
 init_metadata_cache();
 
 // src/proxy/pipeline/response-orchestrator.js
@@ -9119,6 +9610,7 @@ async function rewriteIndependentImageResponse({
 }
 
 // src/proxy/pipeline/handle.js
+var PLAYBACK_STOP_GUARD_TTL_MS = 10 * 1e3;
 var Proxy2 = {
   /**
    * 核心代理处理函数
@@ -9198,6 +9690,16 @@ var Proxy2 = {
         runtimeConfig?.redirectCachePersistenceTtlSeconds
       );
       context.redirectCacheKv = getRedirectCacheKvBinding(env);
+      const stoppedGuardResponse = await maybeHandlePlaybackSessionStopGuard({
+        globals: GLOBALS,
+        request,
+        path,
+        context,
+        finalOrigin
+      });
+      if (stoppedGuardResponse) {
+        return stoppedGuardResponse;
+      }
       if (shouldUseIndependentImagePath(independentImageGatewayState)) {
         const imageRequestState = await normalizeIndependentImageRequest(GLOBALS, request, path, context);
         imageRequestState.debugProxyHeaders = context.debugProxyHeaders === true;
@@ -9350,6 +9852,7 @@ var Proxy2 = {
         requestState = upstreamState.requestState;
       }
       if (upstreamState.errorResponse) {
+        rememberPlaybackSessionFailure(GLOBALS, context, requestState, upstreamState.errorResponse, diagnostics);
         return finalizeDiagnostics(GLOBALS, upstreamState.errorResponse, diagnostics, request);
       }
       ({ requestState, upstreamState } = await applyFallbackStrategy({
@@ -9360,8 +9863,10 @@ var Proxy2 = {
         diagnostics
       }));
       if (upstreamState.errorResponse) {
+        rememberPlaybackSessionFailure(GLOBALS, context, requestState, upstreamState.errorResponse, diagnostics);
         return finalizeDiagnostics(GLOBALS, upstreamState.errorResponse, diagnostics, request);
       }
+      rememberPlaybackSessionFailure(GLOBALS, context, requestState, upstreamState.response, diagnostics);
       if (shouldUseIndependentImagePath(requestState)) {
         return await rewriteIndependentImageResponse({
           request,
@@ -9405,6 +9910,117 @@ function buildEdgePolicyHeaders(request, originOverride = null, extra = {}) {
   applyBaseProxySecurityHeaders(headers);
   applyProxyCorsHeaders(headers, request, originOverride);
   return headers;
+}
+function buildPlaybackStopGuardKey(contextPath, playSessionId) {
+  const site = String(contextPath || "").trim();
+  const session = String(playSessionId || "").trim();
+  if (!site || !session) return "";
+  return `${site}|${session}`;
+}
+function prunePlaybackSessionStopGuard(globals, now = Date.now()) {
+  for (const [key, entry] of globals.PlaybackSessionStopGuard.entries()) {
+    if (!entry || now - Number(entry.updatedAt || entry.recentFailureAt || 0) > PLAYBACK_STOP_GUARD_TTL_MS) {
+      globals.PlaybackSessionStopGuard.delete(key);
+    }
+  }
+}
+async function readPlaybackSessionLifecyclePayload(request, path) {
+  const method = String(request?.method || "").toUpperCase();
+  if (method !== "POST") return null;
+  const lowerPath = String(path || "").toLowerCase();
+  let eventType = "";
+  if (lowerPath.includes("/sessions/playing/progress")) {
+    eventType = "progress";
+  } else if (lowerPath.includes("/sessions/playing/stopped")) {
+    eventType = "stopped";
+  } else {
+    return null;
+  }
+  const contentType = String(request?.headers?.get?.("Content-Type") || "").toLowerCase();
+  if (!contentType.includes("application/json")) return null;
+  try {
+    const payload = await request.clone().json();
+    return {
+      eventType,
+      playSessionId: String(payload?.PlaySessionId || payload?.PlaySessionID || "").trim(),
+      positionTicks: Number(payload?.PositionTicks || 0) || 0,
+      runTimeTicks: Number(payload?.RunTimeTicks || 0) || 0
+    };
+  } catch (_) {
+    return null;
+  }
+}
+function rememberPlaybackSessionProgress(globals, context, payload, now = Date.now()) {
+  const key = buildPlaybackStopGuardKey(context?.path, payload?.playSessionId);
+  if (!key) return;
+  const previous = globals.PlaybackSessionStopGuard.get(key) || {};
+  globals.PlaybackSessionStopGuard.set(key, {
+    ...previous,
+    lastProgressAt: now,
+    lastRunTimeTicks: Number(payload?.runTimeTicks || 0) || Number(previous.lastRunTimeTicks || 0) || 0,
+    lastPositionTicks: Number(payload?.positionTicks || 0) || 0,
+    updatedAt: now
+  });
+}
+function shouldTrackPlaybackStopGuardFailure(requestState, response) {
+  if (requestState?.isBigStream !== true) return false;
+  const range = parseSingleByteRangeHeader(requestState?.rangeHeader);
+  if (!range || range.start <= 0) return false;
+  const status = Number(response?.status) || 0;
+  return status >= 500;
+}
+function rememberPlaybackSessionFailure(globals, context, requestState, response, diagnostics, now = Date.now()) {
+  if (!shouldTrackPlaybackStopGuardFailure(requestState, response)) return;
+  const playSessionId = String(
+    requestState?.requestUrl?.searchParams?.get?.("PlaySessionId") || requestState?.requestUrl?.searchParams?.get?.("PlaySessionID") || ""
+  ).trim();
+  const key = buildPlaybackStopGuardKey(context?.path, playSessionId);
+  if (!key) return;
+  const previous = globals.PlaybackSessionStopGuard.get(key) || {};
+  globals.PlaybackSessionStopGuard.set(key, {
+    ...previous,
+    recentFailureAt: now,
+    failureStatus: Number(response?.status) || 0,
+    failureRoute: String(diagnostics?.route || "").trim(),
+    updatedAt: now
+  });
+}
+function shouldSuppressPlaybackStopped(globals, context, payload, now = Date.now()) {
+  const key = buildPlaybackStopGuardKey(context?.path, payload?.playSessionId);
+  if (!key) return false;
+  const entry = globals.PlaybackSessionStopGuard.get(key);
+  if (!entry) return false;
+  if (now - Number(entry.recentFailureAt || 0) > PLAYBACK_STOP_GUARD_TTL_MS) {
+    globals.PlaybackSessionStopGuard.delete(key);
+    return false;
+  }
+  const runtimeTicks = Math.max(
+    Number(payload?.runTimeTicks || 0) || 0,
+    Number(entry.lastRunTimeTicks || 0) || 0
+  );
+  const positionTicks = Number(payload?.positionTicks || 0) || 0;
+  if (runtimeTicks <= 0 || positionTicks <= 0) return false;
+  return positionTicks >= runtimeTicks;
+}
+async function maybeHandlePlaybackSessionStopGuard({ globals, request, path, context, finalOrigin }) {
+  const payload = await readPlaybackSessionLifecyclePayload(request, path);
+  if (!payload?.playSessionId) return null;
+  const now = Date.now();
+  prunePlaybackSessionStopGuard(globals, now);
+  if (payload.eventType === "progress") {
+    rememberPlaybackSessionProgress(globals, context, payload, now);
+    return null;
+  }
+  if (!shouldSuppressPlaybackStopped(globals, context, payload, now)) {
+    return null;
+  }
+  globals.PlaybackSessionStopGuard.delete(buildPlaybackStopGuardKey(context?.path, payload.playSessionId));
+  return new Response(null, {
+    status: 204,
+    headers: buildEdgePolicyHeaders(request, finalOrigin, {
+      "X-Proxy-Route": "playback-stop-guard"
+    })
+  });
 }
 function evaluateFirewall(request, runtimeConfig, finalOrigin) {
   const clientIp = request?.headers?.get?.("cf-connecting-ip") || "unknown";
@@ -9578,6 +10194,8 @@ async function handleAdminApiAction(data, { request, env }) {
         await writeRuntimeConfig(env, data.config);
       }
       return jsonResponse2({ success: true });
+    case "versionStatus":
+      return jsonResponse2(await readStoredVersionStatus(env));
     case "tcping": {
       if (typeof data.name === "string" && data.name.trim()) {
         const runtimeConfig = await readRuntimeConfig(env);
@@ -9782,6 +10400,74 @@ function handleClientRttProbe() {
   });
 }
 
+// src/integrations/version-check.js
+init_version();
+async function fetchRemoteWorkerVersion(fetchImpl = fetch) {
+  const rawUrl = buildGitHubWorkerDistRawUrl(
+    GITHUB_REPOSITORY_URL,
+    GITHUB_REPOSITORY_BRANCH,
+    GITHUB_REPOSITORY_DIST_PATH
+  );
+  if (!rawUrl) {
+    throw new Error("仓库地址配置无效");
+  }
+  const response = await fetchImpl(rawUrl, {
+    method: "GET",
+    headers: {
+      Accept: "application/javascript, text/plain;q=0.9, */*;q=0.1",
+      "Cache-Control": "no-cache"
+    }
+  });
+  if (!response.ok) {
+    throw new Error(`GitHub 返回异常状态 ${response.status}`);
+  }
+  const source = await response.text();
+  const remoteVersion = parseWorkerVersionFromSource(source);
+  if (!remoteVersion) {
+    throw new Error("未能解析仓库 dist/worker.js 版本");
+  }
+  return {
+    remoteVersion,
+    rawUrl
+  };
+}
+async function compareRepositoryWorkerVersion({
+  fetchImpl = fetch,
+  now = /* @__PURE__ */ new Date()
+} = {}) {
+  const checkedAt = now instanceof Date ? now.toISOString() : new Date(now).toISOString();
+  try {
+    const { remoteVersion } = await fetchRemoteWorkerVersion(fetchImpl);
+    const comparison = compareVersions(WORKER_VERSION, remoteVersion);
+    return normalizeVersionStatusRecord({
+      currentVersion: WORKER_VERSION,
+      remoteVersion,
+      status: comparison < 0 ? "update-available" : "equal",
+      checkedAt,
+      error: "",
+      repositoryUrl: GITHUB_REPOSITORY_URL,
+      repositoryBranch: GITHUB_REPOSITORY_BRANCH,
+      repositoryDistPath: GITHUB_REPOSITORY_DIST_PATH
+    });
+  } catch (error) {
+    return normalizeVersionStatusRecord({
+      currentVersion: WORKER_VERSION,
+      remoteVersion: "",
+      status: "error",
+      checkedAt,
+      error: error?.message || "版本检查失败",
+      repositoryUrl: GITHUB_REPOSITORY_URL,
+      repositoryBranch: GITHUB_REPOSITORY_BRANCH,
+      repositoryDistPath: GITHUB_REPOSITORY_DIST_PATH
+    });
+  }
+}
+async function runScheduledVersionCheck(env, options = {}) {
+  const result = await compareRepositoryWorkerVersion(options);
+  await writeStoredVersionStatus(env, result);
+  return result;
+}
+
 // src/app/worker-routes.js
 function decodePathSegments(pathname = "/") {
   return String(pathname || "/").split("/").filter(Boolean).map((segment) => {
@@ -9814,11 +10500,20 @@ async function handleWorkerRequest(request, env, ctx) {
   }
   return new Response("Not Found", { status: 404 });
 }
+async function handleWorkerScheduled(controller, env, ctx) {
+  const now = controller?.scheduledTime ? new Date(controller.scheduledTime) : /* @__PURE__ */ new Date();
+  const task = runScheduledVersionCheck(env, { now });
+  ctx?.waitUntil?.(task);
+  return task;
+}
 
 // src/worker-entry.js
 var worker_entry_default = {
   async fetch(request, env, ctx) {
     return handleWorkerRequest(request, env, ctx);
+  },
+  async scheduled(controller, env, ctx) {
+    return handleWorkerScheduled(controller, env, ctx);
   }
 };
 export {

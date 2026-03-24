@@ -12,5 +12,8 @@
   ],
   "placement": {
     "mode": "off"
+  },
+  "triggers": {
+    "crons": ["0 6 * * *"]
   }
 }
