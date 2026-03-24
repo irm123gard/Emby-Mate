@@ -1,0 +1,36 @@
+.DS_Store
+
+# Local tooling and caches
+.wrangler/
+.npm-cache/
+.publish/
+node_modules/
+.codex/
+.agents/
+skills-lock.json
+.env
+.env.*
+*.local
+*.log
+
+# Local artifacts and temporary research
+reports/
+screenshot/
+backup/
+feedback/
+hr/
+ms06/
+v2.4/
+PLAN-v2.4.2.md
+defect.md
+
+# Source workspace remains local; GitHub release repo stays artifact-focused
+src/
+tests/
+
+# Generated build output: keep the deployable worker only
+dist/*
+!dist/worker.js
+
+# Historical snapshots not intended for active maintenance
+worker-v*.js
